@@ -261,6 +261,22 @@
     </form>
   </dialog>
 
+  <dialog id="import-dialog" class="sheet-dialog">
+    <form method="dialog" class="sheet compact-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="section-kicker">CSV 文件</p><h2>导入数据</h2></div>
+        <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
+      </div>
+      <p class="sheet-description">选择由顺风账导出的 CSV 文件。现有记录会保留，重复记录会自动跳过。</p>
+      <label class="import-file-button">
+        <span>选择 CSV 文件</span>
+        <input id="import-file" type="file" accept=".csv,text/csv">
+      </label>
+      <p class="form-error import-status" id="import-status" role="status"></p>
+    </form>
+  </dialog>
+
   <dialog id="settings-dialog" class="sheet-dialog">
     <form method="dialog" class="sheet compact-sheet">
       <div class="sheet-handle"></div>
@@ -271,7 +287,9 @@
       <div class="settings-list">
         <button type="button" id="settings-platforms"><span><strong>平台管理</strong><small>排序、添加或隐藏平台</small></span><b>›</b></button>
         <button type="button" id="settings-export"><span><strong>导出 CSV</strong><small>备份或在表格中分析</small></span><b>›</b></button>
+        <button type="button" id="settings-import"><span><strong>导入 CSV</strong><small>恢复备份，自动跳过重复记录</small></span><b>›</b></button>
         <button type="button" id="settings-install"><span><strong>添加到主屏幕</strong><small>像 App 一样全屏、离线使用</small></span><b>›</b></button>
+        <button type="button" class="danger-setting" id="settings-clear"><span><strong>清空全部记录</strong><small>平台设置会保留</small></span><b>×</b></button>
       </div>
       <p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3m-11 0h12v10H6V10Z"/></svg>所有数据仅保存在当前设备的浏览器中。</p>
     </form>
