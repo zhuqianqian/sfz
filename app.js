@@ -25,7 +25,6 @@
     cursor: new Date(),
     metric: 'income'
   };
-  let passengerTripNumberDirty = false;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -69,34 +68,10 @@
     };
   }
 
-  function migratePassengerTripNumbers(records) {
-    const latestByPassenger = new Map();
-    const ordered = Array.from(records).sort((a, b) => {
-      const timeDifference = new Date(a.timestamp) - new Date(b.timestamp);
-      return timeDifference || a.id.localeCompare(b.id);
-    });
-    ordered.forEach((record) => {
-      if (!record.passenger) {
-        record.passengerTripNumber = null;
-        return;
-      }
-      const latest = latestByPassenger.get(record.passenger) || 0;
-      if (Number.isInteger(record.passengerTripNumber) && record.passengerTripNumber > 0) {
-        latestByPassenger.set(record.passenger, Math.max(latest, record.passengerTripNumber));
-        return;
-      }
-      record.passengerTripNumber = latest + 1;
-      latestByPassenger.set(record.passenger, record.passengerTripNumber);
-    });
-    return records;
-  }
-
   function loadState() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
-      state.records = Array.isArray(saved && saved.records)
-        ? migratePassengerTripNumbers(saved.records.map(normalizeRecord).filter(Boolean))
-        : [];
+      state.records = Array.isArray(saved && saved.records) ? saved.records.map(normalizeRecord).filter(Boolean) : [];
       state.platforms = Array.isArray(saved && saved.platforms) && saved.platforms.length
         ? saved.platforms.map(normalizePlatform).filter(Boolean)
         : DEFAULT_PLATFORMS.map((platform) => Object.assign({}, platform));
@@ -190,8 +165,11 @@
     list.innerHTML = records.map((record) => {
       const platform = platformFor(record);
       const gap = passengerTripGap(record);
+      const tripNumberText = Number.isInteger(record.passengerTripNumber)
+        ? ' · 第 ' + record.passengerTripNumber + ' 次出行' + (gap ? '<em class="trip-gap">中间 ' + gap + ' 次未同行</em>' : '')
+        : '';
       const passengerText = record.passenger
-        ? '乘客 ···' + record.passenger + ' · 第 ' + record.passengerTripNumber + ' 次出行' + (gap ? '<em class="trip-gap">中间 ' + gap + ' 次未同行</em>' : '')
+        ? '乘客 ···' + record.passenger + tripNumberText
         : '未记录乘客';
       const time = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(record.timestamp));
       return '<button class="trip-item" type="button" data-record-id="' + escapeHtml(record.id) + '" aria-label="编辑 ' + escapeHtml(platform.name) + ' ' + record.amount.toFixed(2) + ' 元的记录">' +
@@ -220,18 +198,17 @@
     return Math.max(0, target.passengerTripNumber - previous.passengerTripNumber - 1);
   }
 
-  function updatePassengerTripNumberInput(forceSuggestion) {
+  function updatePassengerTripNumberInput() {
     const passenger = $('#passenger-input').value.replace(/\D/g, '').slice(-4);
     const input = $('#passenger-count-input');
     const completePassenger = passenger.length === 4;
     input.disabled = !completePassenger;
     if (!completePassenger) {
       input.value = '';
+      input.placeholder = '选填';
       return;
     }
-    if (forceSuggestion || !passengerTripNumberDirty || !input.value) {
-      input.value = suggestedPassengerTripNumber(passenger);
-    }
+    input.placeholder = '建议 ' + suggestedPassengerTripNumber(passenger);
   }
 
   function updateEditPassengerTripNumber(forceSuggestion) {
@@ -242,20 +219,20 @@
     input.disabled = !completePassenger;
     if (!completePassenger) {
       input.value = '';
+      input.placeholder = '第几次';
       return;
     }
-    if (forceSuggestion || !input.value) {
-      input.value = record && passenger === record.passenger && record.passengerTripNumber
-        ? record.passengerTripNumber
-        : suggestedPassengerTripNumber(passenger, record && record.id);
+    if (forceSuggestion) {
+      input.value = record && passenger === record.passenger && record.passengerTripNumber ? record.passengerTripNumber : '';
     }
+    input.placeholder = '建议 ' + suggestedPassengerTripNumber(passenger, record && record.id);
   }
 
   function validateTrip(amount, distance, passenger, passengerTripNumber) {
     if (!Number.isFinite(amount) || amount <= 0) return '请输入大于 0 的收入金额。';
     if (!Number.isFinite(distance) || distance <= 0) return '请输入大于 0 的行驶里程。';
     if (passenger && passenger.length !== 4) return '乘客手机尾号请输入 4 位数字，或留空。';
-    if (passenger && (!Number.isInteger(passengerTripNumber) || passengerTripNumber < 1)) return '请输入乘客本次是第几次出行。';
+    if (passengerTripNumber !== null && (!Number.isInteger(passengerTripNumber) || passengerTripNumber < 1)) return '乘客出行序号必须是大于 0 的整数。';
     return '';
   }
 
@@ -264,7 +241,8 @@
     const amount = Number($('#amount-input').value);
     const distance = Number($('#distance-input').value);
     const passenger = $('#passenger-input').value.replace(/\D/g, '').slice(-4);
-    const passengerTripNumber = passenger ? Number($('#passenger-count-input').value) : null;
+    const passengerTripNumberValue = $('#passenger-count-input').value;
+    const passengerTripNumber = passenger && passengerTripNumberValue ? Number(passengerTripNumberValue) : null;
     const error = validateTrip(amount, distance, passenger, passengerTripNumber);
     if (error) {
       $('#form-error').textContent = error;
@@ -279,7 +257,7 @@
       amount: round(amount, 2),
       distance: round(distance, 1),
       passenger: passenger,
-      passengerTripNumber: passenger ? passengerTripNumber : null
+      passengerTripNumber: passengerTripNumber
     };
     state.records.push(record);
     if (!saveState()) {
@@ -287,10 +265,9 @@
       return;
     }
     $('#trip-form').reset();
-    passengerTripNumberDirty = false;
     $('#form-error').textContent = '';
     renderHome();
-    showToast(passenger ? '已记录 · 尾号 ' + passenger + ' 第 ' + passengerTripNumber + ' 次出行' : '已记录这一单');
+    showToast(passenger ? '已记录 · 尾号 ' + passenger + (passengerTripNumber ? ' 第 ' + passengerTripNumber + ' 次出行' : '') : '已记录这一单');
     $('#amount-input').focus({ preventScroll: true });
   }
 
@@ -390,7 +367,8 @@
     const amount = Number($('#edit-amount').value);
     const distance = Number($('#edit-distance').value);
     const passenger = $('#edit-passenger').value.replace(/\D/g, '').slice(-4);
-    const passengerTripNumber = passenger ? Number($('#edit-passenger-count').value) : null;
+    const passengerTripNumberValue = $('#edit-passenger-count').value;
+    const passengerTripNumber = passenger && passengerTripNumberValue ? Number(passengerTripNumberValue) : null;
     const error = Number.isNaN(timestamp.getTime()) ? '请选择有效的日期和时间。' : validateTrip(amount, distance, passenger, passengerTripNumber);
     if (error) {
       $('#edit-error').textContent = error;
@@ -404,7 +382,7 @@
       amount: round(amount, 2),
       distance: round(distance, 1),
       passenger: passenger,
-      passengerTripNumber: passenger ? passengerTripNumber : null
+      passengerTripNumber: passengerTripNumber
     });
     saveState();
     $('#edit-dialog').close();
@@ -462,6 +440,11 @@
   }
 
   function renderStats() {
+    $$('.metric-control button').forEach((button) => {
+      const active = button.dataset.metric === state.metric;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
     renderPeriodLabel();
     renderCalendar();
     const records = scopeRecords();
@@ -754,10 +737,8 @@
     $('#trip-form').addEventListener('submit', submitTrip);
     $('#passenger-input').addEventListener('input', (event) => {
       event.target.value = event.target.value.replace(/\D/g, '').slice(0, 4);
-      passengerTripNumberDirty = false;
-      updatePassengerTripNumberInput(true);
+      updatePassengerTripNumberInput();
     });
-    $('#passenger-count-input').addEventListener('input', () => { passengerTripNumberDirty = true; });
     $('#manage-platforms').addEventListener('click', openPlatformDialog);
     $('#platform-manager-list').addEventListener('click', managePlatformClick);
     $('#add-platform-button').addEventListener('click', addPlatform);
@@ -782,7 +763,10 @@
     $('#period-prev').addEventListener('click', () => movePeriod(-1));
     $('#period-next').addEventListener('click', () => movePeriod(1));
     $('#period-label').addEventListener('click', () => { state.cursor = new Date(); renderStats(); });
-    $('#metric-select').addEventListener('change', (event) => { state.metric = event.target.value; renderStats(); });
+    $$('.metric-control button').forEach((button) => button.addEventListener('click', () => {
+      state.metric = button.dataset.metric;
+      renderStats();
+    }));
     $('#open-export').addEventListener('click', openExportDialog);
     $('#export-scope').addEventListener('click', () => exportCsv(scopeRecords(), '当前范围'));
     $('#export-all').addEventListener('click', () => exportCsv(state.records, '全部'));

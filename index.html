@@ -80,8 +80,8 @@
                 <span class="input-shell passenger-input"><b>···</b><input id="passenger-input" name="passenger" type="tel" inputmode="numeric" maxlength="4" pattern="[0-9]{1,4}" placeholder="1234" autocomplete="off"></span>
               </label>
               <label class="trip-number-field">
-                <span>乘客出行序号</span>
-                <span class="input-shell trip-number-input"><b>第</b><input id="passenger-count-input" name="passengerTripNumber" type="number" inputmode="numeric" min="1" step="1" placeholder="—" aria-label="乘客第几次出行" disabled><b>次</b></span>
+                <span>乘客出行序号 <em>选填</em></span>
+                <span class="input-shell trip-number-input"><b>第</b><input id="passenger-count-input" name="passengerTripNumber" type="number" inputmode="numeric" min="1" step="1" placeholder="选填" aria-label="乘客第几次出行" disabled><b>次</b></span>
               </label>
               <button class="record-button" type="submit" id="record-button">
                 <span>记一单</span>
@@ -148,12 +148,11 @@
               <p class="section-kicker">变化趋势</p>
               <h2 id="trend-title">收入趋势</h2>
             </div>
-            <label class="sr-only" for="metric-select">图表指标</label>
-            <select id="metric-select" class="metric-select">
-              <option value="income">收入</option>
-              <option value="distance">里程</option>
-              <option value="count">订单</option>
-            </select>
+            <div class="metric-control" role="group" aria-label="图表指标">
+              <button type="button" data-metric="income" class="active" aria-pressed="true">收入</button>
+              <button type="button" data-metric="distance" aria-pressed="false">里程</button>
+              <button type="button" data-metric="count" aria-pressed="false">订单</button>
+            </div>
           </div>
           <div class="chart-wrap" id="trend-chart"></div>
         </section>
@@ -218,7 +217,7 @@
         <label><span>收入（元）</span><input id="edit-amount" type="number" inputmode="decimal" min="0" step="0.01" required></label>
         <label><span>里程（km）</span><input id="edit-distance" type="number" inputmode="decimal" min="0" step="0.1" required></label>
         <label><span>乘客手机尾号</span><input id="edit-passenger" type="tel" inputmode="numeric" maxlength="4" placeholder="选填"></label>
-        <label><span>乘客出行序号</span><input id="edit-passenger-count" type="number" inputmode="numeric" min="1" step="1" placeholder="第几次" disabled></label>
+        <label><span>乘客出行序号（选填）</span><input id="edit-passenger-count" type="number" inputmode="numeric" min="1" step="1" placeholder="第几次" disabled></label>
       </div>
       <p class="form-error" id="edit-error" role="alert"></p>
       <div class="sheet-actions split-actions">
