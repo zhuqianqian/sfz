@@ -699,17 +699,18 @@
       return;
     }
     const sorted = Array.from(records).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    const header = ['日期', '时间', '平台', '收入(元)', '里程(公里)', '乘客手机尾号', '乘客出行次数'];
+    const header = ['日期', '时间', '平台', '收入(元)', '里程(公里)', '乘客手机尾号', '乘客出行次数', '记录ID'];
     const rows = sorted.map((record) => {
       const date = new Date(record.timestamp);
       return [
         localDateKey(date),
-        String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0'),
+        String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0') + ':' + String(date.getSeconds()).padStart(2, '0'),
         platformFor(record).name,
         record.amount.toFixed(2),
         record.distance.toFixed(1),
         record.passenger,
-        record.passengerTripNumber || ''
+        record.passengerTripNumber || '',
+        record.id
       ];
     });
     const csv = '\ufeff' + [header].concat(rows).map((row) => row.map(csvCell).join(',')).join('\r\n');
@@ -729,6 +730,202 @@
   function csvCell(value) {
     const text = String(value == null ? '' : value);
     return /[",\r\n]/.test(text) ? '"' + text.replaceAll('"', '""') + '"' : text;
+  }
+
+  function parseCsv(text) {
+    const rows = [];
+    let row = [];
+    let cell = '';
+    let quoted = false;
+    for (let index = 0; index < text.length; index += 1) {
+      const character = text[index];
+      if (quoted) {
+        if (character === '"' && text[index + 1] === '"') {
+          cell += '"';
+          index += 1;
+        } else if (character === '"') {
+          quoted = false;
+        } else {
+          cell += character;
+        }
+      } else if (character === '"') {
+        quoted = true;
+      } else if (character === ',') {
+        row.push(cell);
+        cell = '';
+      } else if (character === '\n' || character === '\r') {
+        if (character === '\r' && text[index + 1] === '\n') index += 1;
+        row.push(cell);
+        rows.push(row);
+        row = [];
+        cell = '';
+      } else {
+        cell += character;
+      }
+    }
+    if (quoted) throw new Error('CSV 文件中存在未闭合的引号。');
+    if (cell || row.length) {
+      row.push(cell);
+      rows.push(row);
+    }
+    return rows.filter((item) => item.some((value) => value.trim()));
+  }
+
+  function importRecordKey(record, platformName) {
+    const date = new Date(record.timestamp);
+    const time = String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0');
+    return [
+      localDateKey(date),
+      time,
+      String(platformName || '').trim().toLowerCase(),
+      Number(record.amount).toFixed(2),
+      Number(record.distance).toFixed(1),
+      record.passenger || '',
+      record.passengerTripNumber || ''
+    ].join('|');
+  }
+
+  function importedPlatform(name) {
+    const existing = state.platforms.find((platform) => platform.name.toLowerCase() === name.toLowerCase());
+    if (existing) return existing;
+    const builtIn = DEFAULT_PLATFORMS.find((platform) => platform.name.toLowerCase() === name.toLowerCase());
+    const colors = ['#497766', '#a96548', '#6b6fa8', '#8b7045', '#4b7892'];
+    const platform = builtIn
+      ? Object.assign({}, builtIn)
+      : {
+          id: makeId('platform'),
+          name: name.slice(0, 8),
+          short: Array.from(name)[0] || '车',
+          color: colors[state.platforms.length % colors.length],
+          icon: '',
+          builtIn: false
+        };
+    state.platforms.push(platform);
+    return platform;
+  }
+
+  async function importCsvFile(file) {
+    const status = $('#import-status');
+    status.textContent = '正在读取文件…';
+    try {
+      const rows = parseCsv(await file.text());
+      if (rows.length < 2) throw new Error('文件中没有可导入的记录。');
+      const headers = rows[0].map((value, index) => (index === 0 ? value.replace(/^\ufeff/, '') : value).trim());
+      const column = (name) => headers.indexOf(name);
+      const dateColumn = column('日期');
+      const timeColumn = column('时间');
+      const platformColumn = column('平台');
+      const amountColumn = column('收入(元)');
+      const distanceColumn = column('里程(公里)');
+      const passengerColumn = column('乘客手机尾号');
+      const tripNumberColumn = column('乘客出行次数') >= 0 ? column('乘客出行次数') : column('该乘客第几次出行');
+      const recordIdColumn = column('记录ID');
+      if ([dateColumn, timeColumn, platformColumn, amountColumn, distanceColumn].some((index) => index < 0)) {
+        throw new Error('CSV 表头不符合顺风账的导出格式。');
+      }
+
+      const existingKeys = new Set(state.records.map((record) => importRecordKey(record, platformFor(record).name)));
+      const existingIds = new Set(state.records.map((record) => record.id));
+      const imported = [];
+      let invalidCount = 0;
+      let duplicateCount = 0;
+      rows.slice(1).forEach((row) => {
+        const value = (index) => index >= 0 ? String(row[index] || '').trim() : '';
+        const dateText = value(dateColumn);
+        const timeText = value(timeColumn);
+        const platformName = value(platformColumn);
+        const amount = Number(value(amountColumn));
+        const distance = Number(value(distanceColumn));
+        const passenger = value(passengerColumn);
+        const tripNumberText = value(tripNumberColumn);
+        const sourceId = value(recordIdColumn).slice(0, 128);
+        const passengerTripNumber = tripNumberText ? Number(tripNumberText) : null;
+        const validDate = /^\d{4}-\d{2}-\d{2}$/.test(dateText);
+        const validTime = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(timeText);
+        const timestamp = validDate && validTime ? new Date(dateText + 'T' + (timeText.length === 5 ? timeText + ':00' : timeText)) : new Date(NaN);
+        const validPassenger = !passenger || /^\d{4}$/.test(passenger);
+        const validTripNumber = passengerTripNumber === null || (Number.isInteger(passengerTripNumber) && passengerTripNumber > 0);
+        if (!platformName || Number.isNaN(timestamp.getTime()) || localDateKey(timestamp) !== dateText || !Number.isFinite(amount) || amount <= 0 || !Number.isFinite(distance) || distance <= 0 || !validPassenger || !validTripNumber) {
+          invalidCount += 1;
+          return;
+        }
+        const candidate = {
+          timestamp: timestamp.toISOString(),
+          platformName: platformName,
+          amount: round(amount, 2),
+          distance: round(distance, 1),
+          passenger: passenger,
+          passengerTripNumber: passenger ? passengerTripNumber : null,
+          sourceId: sourceId
+        };
+        const key = importRecordKey(candidate, platformName);
+        if ((sourceId && existingIds.has(sourceId)) || (!sourceId && existingKeys.has(key))) {
+          duplicateCount += 1;
+          return;
+        }
+        if (sourceId) existingIds.add(sourceId);
+        existingKeys.add(key);
+        imported.push(candidate);
+      });
+
+      if (!imported.length) {
+        const skipped = duplicateCount + invalidCount;
+        throw new Error(skipped ? '没有新增记录，共跳过 ' + skipped + ' 条。' : '文件中没有可导入的记录。');
+      }
+      const previousRecords = state.records.slice();
+      const previousPlatforms = state.platforms.slice();
+      imported.forEach((candidate) => {
+        const platform = importedPlatform(candidate.platformName);
+        state.records.push({
+          id: candidate.sourceId || makeId('trip'),
+          timestamp: candidate.timestamp,
+          platformId: platform.id,
+          platformName: platform.name,
+          amount: candidate.amount,
+          distance: candidate.distance,
+          passenger: candidate.passenger,
+          passengerTripNumber: candidate.passengerTripNumber
+        });
+      });
+      if (!saveState()) {
+        state.records = previousRecords;
+        state.platforms = previousPlatforms;
+        status.textContent = '导入失败，请检查 Safari 存储空间。';
+        return;
+      }
+      $('#import-dialog').close();
+      renderHome();
+      if (state.page === 'stats') renderStats();
+      if (!passengerTripNumberDirty) updatePassengerTripNumberInput(true);
+      const skipped = duplicateCount + invalidCount;
+      showToast('已导入 ' + imported.length + ' 条' + (skipped ? '，跳过 ' + skipped + ' 条' : ''));
+    } catch (error) {
+      status.textContent = error.message || '无法读取这个 CSV 文件。';
+    } finally {
+      $('#import-file').value = '';
+    }
+  }
+
+  function clearAllRecords() {
+    const count = state.records.length;
+    if (!count) {
+      $('#settings-dialog').close();
+      showToast('当前没有记录可清空');
+      return;
+    }
+    if (!window.confirm('确认清空全部 ' + count + ' 条记录？此操作无法撤销，建议先导出备份。')) return;
+    const previousRecords = state.records;
+    state.records = [];
+    if (!saveState()) {
+      state.records = previousRecords;
+      return;
+    }
+    $('#settings-dialog').close();
+    passengerTripNumberDirty = false;
+    renderHome();
+    updatePassengerTripNumberInput(true);
+    if (state.page === 'stats') renderStats();
+    showToast('已清空 ' + count + ' 条记录');
   }
 
   function renderPeriodAndChartsAfterEdit() {
@@ -827,7 +1024,16 @@
     $('#open-settings').addEventListener('click', () => $('#settings-dialog').showModal());
     $('#settings-platforms').addEventListener('click', () => { renderPlatformManager(); chainDialog($('#settings-dialog'), $('#platform-dialog')); });
     $('#settings-export').addEventListener('click', () => { updateExportLabels(); chainDialog($('#settings-dialog'), $('#export-dialog')); });
+    $('#settings-import').addEventListener('click', () => {
+      $('#import-status').textContent = '';
+      chainDialog($('#settings-dialog'), $('#import-dialog'));
+    });
+    $('#import-file').addEventListener('change', (event) => {
+      const file = event.target.files && event.target.files[0];
+      if (file) importCsvFile(file);
+    });
     $('#settings-install').addEventListener('click', () => chainDialog($('#settings-dialog'), $('#install-dialog')));
+    $('#settings-clear').addEventListener('click', clearAllRecords);
     $('#dismiss-install').addEventListener('click', () => {
       $('#install-tip').hidden = true;
       localStorage.setItem(INSTALL_DISMISSED_KEY, '1');
