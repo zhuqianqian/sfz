@@ -66,6 +66,13 @@ button:focus-visible, input:focus-visible, select:focus-visible {
 
 .app-shell.stats-mode > .app-header { display: none; }
 
+.date-heading {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+}
+.date-weekday { color: var(--muted); font-size: 14px; font-weight: 600; }
+
 h1, h2, p { margin: 0; }
 h1 {
   font-size: 28px;
@@ -361,6 +368,9 @@ label > span:first-child em { font-style: normal; font-weight: 400; }
 .form-error { min-height: 18px; margin-top: 8px; color: var(--danger); font-size: 12px; }
 
 .today-section { margin-top: 25px; }
+.detail-heading-actions { display: flex; align-items: center; gap: 11px; }
+.detail-heading-actions > span { color: var(--muted); font-size: 12px; }
+.detail-heading-actions .text-button { padding: 5px 8px; white-space: nowrap; }
 .trip-list { display: grid; gap: 9px; }
 .trip-item {
   display: grid;
@@ -612,6 +622,18 @@ dialog { color: var(--ink); }
   box-shadow: var(--shadow);
 }
 .compact-sheet { padding-bottom: calc(32px + var(--safe-bottom)); }
+.all-records-dialog, .all-records-dialog .sheet { max-height: 94dvh; }
+.all-records-list { display: grid; gap: 20px; padding-bottom: 8px; }
+.record-date-group { display: grid; gap: 9px; }
+.record-date-heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  padding: 0 2px;
+}
+.record-date-heading h3 { margin: 0; font-size: 14px; }
+.record-date-heading span { color: var(--muted); font-size: 11px; }
+.record-date-group .trip-list { gap: 8px; }
 .sheet-handle { width: 38px; height: 5px; margin: 0 auto 16px; border-radius: 99px; background: var(--line); }
 .sheet-header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .sheet-header .icon-button { background: var(--bg); box-shadow: none; font-size: 25px; font-weight: 300; }

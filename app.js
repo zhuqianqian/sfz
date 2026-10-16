@@ -25,6 +25,7 @@
     cursor: new Date(),
     metric: 'income'
   };
+  let passengerTripNumberDirty = false;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -124,7 +125,7 @@
   function updateDateHeader() {
     const now = new Date();
     $('#today-date').textContent = new Intl.DateTimeFormat('zh-CN', { month: 'long', day: 'numeric' }).format(now);
-    $('#today-weekday').textContent = '今天 · ' + new Intl.DateTimeFormat('zh-CN', { weekday: 'long' }).format(now);
+    $('#today-weekday').textContent = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' }).format(now);
   }
 
   function renderPlatformPicker() {
@@ -156,26 +157,62 @@
     updatePassengerTripNumberInput();
   }
 
+  function tripItemMarkup(record) {
+    const platform = platformFor(record);
+    const gap = passengerTripGap(record);
+    const tripNumberText = Number.isInteger(record.passengerTripNumber)
+      ? ' · 第 ' + record.passengerTripNumber + ' 次出行' + (gap ? '<em class="trip-gap">中间 ' + gap + ' 次未同行</em>' : '')
+      : '';
+    const passengerText = record.passenger
+      ? '乘客 ···' + record.passenger + tripNumberText
+      : '未记录乘客';
+    const time = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(record.timestamp));
+    return '<button class="trip-item" type="button" data-record-id="' + escapeHtml(record.id) + '" aria-label="编辑 ' + escapeHtml(platform.name) + ' ' + record.amount.toFixed(2) + ' 元的记录">' +
+      '<span class="trip-platform-icon ' + (platform.icon ? 'has-icon' : '') + '" style="--platform-color:' + platform.color + '">' + platformMark(platform) + '</span>' +
+      '<span class="trip-main"><strong>' + escapeHtml(platform.name) + ' · ' + time + '</strong><span>' + passengerText + '</span></span>' +
+      '<span class="trip-values"><strong>¥' + moneyFormatter.format(record.amount) + '</strong><span>' + record.distance.toFixed(1) + ' km</span></span></button>';
+  }
+
   function renderTripList(records) {
     const list = $('#today-list');
     if (!records.length) {
       list.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17h16M6 17V9l2-4h8l2 4v8M8 12h.01M16 12h.01M7 17v2M17 17v2"/></svg><strong>今天还没有记录</strong><p>录入这一单的收入和里程，轻轻一点就完成。</p></div>';
       return;
     }
-    list.innerHTML = records.map((record) => {
-      const platform = platformFor(record);
-      const gap = passengerTripGap(record);
-      const tripNumberText = Number.isInteger(record.passengerTripNumber)
-        ? ' · 第 ' + record.passengerTripNumber + ' 次出行' + (gap ? '<em class="trip-gap">中间 ' + gap + ' 次未同行</em>' : '')
-        : '';
-      const passengerText = record.passenger
-        ? '乘客 ···' + record.passenger + tripNumberText
-        : '未记录乘客';
-      const time = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(record.timestamp));
-      return '<button class="trip-item" type="button" data-record-id="' + escapeHtml(record.id) + '" aria-label="编辑 ' + escapeHtml(platform.name) + ' ' + record.amount.toFixed(2) + ' 元的记录">' +
-        '<span class="trip-platform-icon ' + (platform.icon ? 'has-icon' : '') + '" style="--platform-color:' + platform.color + '">' + platformMark(platform) + '</span>' +
-        '<span class="trip-main"><strong>' + escapeHtml(platform.name) + ' · ' + time + '</strong><span>' + passengerText + '</span></span>' +
-        '<span class="trip-values"><strong>¥' + moneyFormatter.format(record.amount) + '</strong><span>' + record.distance.toFixed(1) + ' km</span></span></button>';
+    list.innerHTML = records.map(tripItemMarkup).join('');
+  }
+
+  function recordDateLabel(timestamp) {
+    const date = new Date(timestamp);
+    const includeYear = date.getFullYear() !== new Date().getFullYear();
+    const dateText = new Intl.DateTimeFormat('zh-CN', {
+      year: includeYear ? 'numeric' : undefined,
+      month: 'long',
+      day: 'numeric'
+    }).format(date);
+    const weekday = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' }).format(date);
+    return dateText + ' ' + weekday;
+  }
+
+  function renderAllRecords() {
+    const records = Array.from(state.records).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const list = $('#all-records-list');
+    $('#all-records-meta').textContent = records.length
+      ? records.length + ' 单 · ¥' + moneyFormatter.format(sum(records, 'amount')) + ' · ' + sum(records, 'distance').toFixed(1) + ' km'
+      : '暂无记录';
+    if (!records.length) {
+      list.innerHTML = '<div class="empty-state"><strong>还没有任何记录</strong><p>完成第一笔记录后，历史明细会显示在这里。</p></div>';
+      return;
+    }
+    const groups = new Map();
+    records.forEach((record) => {
+      const key = localDateKey(record.timestamp);
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(record);
+    });
+    list.innerHTML = Array.from(groups.values()).map((group) => {
+      return '<section class="record-date-group"><div class="record-date-heading"><h3>' + recordDateLabel(group[0].timestamp) + '</h3><span>' + group.length + ' 单 · ¥' + moneyFormatter.format(sum(group, 'amount')) + '</span></div>' +
+        '<div class="trip-list">' + group.map(tripItemMarkup).join('') + '</div></section>';
     }).join('');
   }
 
@@ -198,17 +235,19 @@
     return Math.max(0, target.passengerTripNumber - previous.passengerTripNumber - 1);
   }
 
-  function updatePassengerTripNumberInput() {
+  function updatePassengerTripNumberInput(forceSuggestion) {
     const passenger = $('#passenger-input').value.replace(/\D/g, '').slice(-4);
     const input = $('#passenger-count-input');
     const completePassenger = passenger.length === 4;
     input.disabled = !completePassenger;
+    input.placeholder = '—';
     if (!completePassenger) {
       input.value = '';
-      input.placeholder = '选填';
       return;
     }
-    input.placeholder = '建议 ' + suggestedPassengerTripNumber(passenger);
+    if (forceSuggestion || (!passengerTripNumberDirty && !input.value)) {
+      input.value = suggestedPassengerTripNumber(passenger);
+    }
   }
 
   function updateEditPassengerTripNumber(forceSuggestion) {
@@ -217,22 +256,23 @@
     const record = state.records.find((item) => item.id === $('#edit-id').value);
     const completePassenger = passenger.length === 4;
     input.disabled = !completePassenger;
+    input.placeholder = '—';
     if (!completePassenger) {
       input.value = '';
-      input.placeholder = '第几次';
       return;
     }
     if (forceSuggestion) {
-      input.value = record && passenger === record.passenger && record.passengerTripNumber ? record.passengerTripNumber : '';
+      input.value = record && passenger === record.passenger && record.passengerTripNumber
+        ? record.passengerTripNumber
+        : suggestedPassengerTripNumber(passenger, record && record.id);
     }
-    input.placeholder = '建议 ' + suggestedPassengerTripNumber(passenger, record && record.id);
   }
 
   function validateTrip(amount, distance, passenger, passengerTripNumber) {
     if (!Number.isFinite(amount) || amount <= 0) return '请输入大于 0 的收入金额。';
     if (!Number.isFinite(distance) || distance <= 0) return '请输入大于 0 的行驶里程。';
     if (passenger && passenger.length !== 4) return '乘客手机尾号请输入 4 位数字，或留空。';
-    if (passengerTripNumber !== null && (!Number.isInteger(passengerTripNumber) || passengerTripNumber < 1)) return '乘客出行序号必须是大于 0 的整数。';
+    if (passengerTripNumber !== null && (!Number.isInteger(passengerTripNumber) || passengerTripNumber < 1)) return '乘客出行次数必须是大于 0 的整数。';
     return '';
   }
 
@@ -265,6 +305,7 @@
       return;
     }
     $('#trip-form').reset();
+    passengerTripNumberDirty = false;
     $('#form-error').textContent = '';
     renderHome();
     showToast(passenger ? '已记录 · 尾号 ' + passenger + (passengerTripNumber ? ' 第 ' + passengerTripNumber + ' 次出行' : '') : '已记录这一单');
@@ -351,8 +392,9 @@
     $('#edit-amount').value = record.amount;
     $('#edit-distance').value = record.distance;
     $('#edit-passenger').value = record.passenger;
-    $('#edit-passenger-count').disabled = !record.passenger;
+    $('#edit-passenger-count').disabled = record.passenger.length !== 4;
     $('#edit-passenger-count').value = record.passengerTripNumber || '';
+    $('#edit-passenger-count').placeholder = '—';
     $('#edit-error').textContent = '';
     $('#edit-dialog').showModal();
   }
@@ -657,7 +699,7 @@
       return;
     }
     const sorted = Array.from(records).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
-    const header = ['日期', '时间', '平台', '收入(元)', '里程(公里)', '乘客手机尾号', '该乘客第几次出行'];
+    const header = ['日期', '时间', '平台', '收入(元)', '里程(公里)', '乘客手机尾号', '乘客出行次数'];
     const rows = sorted.map((record) => {
       const date = new Date(record.timestamp);
       return [
@@ -737,8 +779,10 @@
     $('#trip-form').addEventListener('submit', submitTrip);
     $('#passenger-input').addEventListener('input', (event) => {
       event.target.value = event.target.value.replace(/\D/g, '').slice(0, 4);
-      updatePassengerTripNumberInput();
+      passengerTripNumberDirty = false;
+      updatePassengerTripNumberInput(true);
     });
+    $('#passenger-count-input').addEventListener('input', () => { passengerTripNumberDirty = true; });
     $('#manage-platforms').addEventListener('click', openPlatformDialog);
     $('#platform-manager-list').addEventListener('click', managePlatformClick);
     $('#add-platform-button').addEventListener('click', addPlatform);
@@ -751,6 +795,16 @@
     $('#today-list').addEventListener('click', (event) => {
       const item = event.target.closest('[data-record-id]');
       if (item) openEditDialog(item.dataset.recordId);
+    });
+    $('#open-all-records').addEventListener('click', () => {
+      renderAllRecords();
+      $('#all-records-dialog').showModal();
+    });
+    $('#all-records-list').addEventListener('click', (event) => {
+      const item = event.target.closest('[data-record-id]');
+      if (!item) return;
+      $('#all-records-dialog').close();
+      requestAnimationFrame(() => openEditDialog(item.dataset.recordId));
     });
     $('#save-trip').addEventListener('click', saveEditedTrip);
     $('#delete-trip').addEventListener('click', deleteEditedTrip);
