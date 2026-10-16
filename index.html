@@ -18,9 +18,9 @@
 <body>
   <div class="app-shell">
     <header class="app-header">
-      <div>
-        <p class="eyebrow" id="today-weekday">今天</p>
+      <div class="date-heading">
         <h1 id="today-date">—</h1>
+        <p class="date-weekday" id="today-weekday">星期—</p>
       </div>
       <button class="icon-button" id="open-settings" type="button" aria-label="打开设置">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15.5a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Z"/><path d="M19.4 15a1.7 1.7 0 0 0 .34 1.88l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.7 1.7 0 0 0-1.88-.34 1.7 1.7 0 0 0-1.03 1.56V21a2 2 0 1 1-4 0v-.09A1.7 1.7 0 0 0 8.94 19.4a1.7 1.7 0 0 0-1.88.34l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.7 1.7 0 0 0 4.6 15a1.7 1.7 0 0 0-1.56-1H3a2 2 0 1 1 0-4h.09A1.7 1.7 0 0 0 4.6 8.94a1.7 1.7 0 0 0-.34-1.88L4.2 7a2 2 0 1 1 2.83-2.83l.06.06A1.7 1.7 0 0 0 9 4.6h.01A1.7 1.7 0 0 0 10 3.06V3a2 2 0 1 1 4 0v.09A1.7 1.7 0 0 0 15.06 4.6a1.7 1.7 0 0 0 1.88-.34L17 4.2A2 2 0 1 1 19.83 7l-.06.06A1.7 1.7 0 0 0 19.4 9v.01A1.7 1.7 0 0 0 20.94 10H21a2 2 0 1 1 0 4h-.09A1.7 1.7 0 0 0 19.4 15Z"/></svg>
@@ -76,12 +76,12 @@
 
             <div class="passenger-row">
               <label>
-                <span>乘客手机尾号 <em>选填</em></span>
+                <span>乘客手机尾号</span>
                 <span class="input-shell passenger-input"><b>···</b><input id="passenger-input" name="passenger" type="tel" inputmode="numeric" maxlength="4" pattern="[0-9]{1,4}" placeholder="1234" autocomplete="off"></span>
               </label>
               <label class="trip-number-field">
-                <span>乘客出行序号 <em>选填</em></span>
-                <span class="input-shell trip-number-input"><b>第</b><input id="passenger-count-input" name="passengerTripNumber" type="number" inputmode="numeric" min="1" step="1" placeholder="选填" aria-label="乘客第几次出行" disabled><b>次</b></span>
+                <span>乘客出行次数</span>
+                <span class="input-shell trip-number-input"><b>第</b><input id="passenger-count-input" name="passengerTripNumber" type="number" inputmode="numeric" min="1" step="1" placeholder="—" aria-label="乘客出行次数" disabled><b>次</b></span>
               </label>
               <button class="record-button" type="submit" id="record-button">
                 <span>记一单</span>
@@ -95,7 +95,10 @@
         <section class="today-section" aria-labelledby="today-list-title">
           <div class="section-heading compact">
             <h2 id="today-list-title">今日明细</h2>
-            <span id="today-list-meta">暂无记录</span>
+            <div class="detail-heading-actions">
+              <span id="today-list-meta">暂无记录</span>
+              <button class="text-button" id="open-all-records" type="button">查看全部</button>
+            </div>
           </div>
           <div class="trip-list" id="today-list"></div>
         </section>
@@ -216,14 +219,26 @@
         <label><span>日期与时间</span><input id="edit-datetime" type="datetime-local" required></label>
         <label><span>收入（元）</span><input id="edit-amount" type="number" inputmode="decimal" min="0" step="0.01" required></label>
         <label><span>里程（km）</span><input id="edit-distance" type="number" inputmode="decimal" min="0" step="0.1" required></label>
-        <label><span>乘客手机尾号</span><input id="edit-passenger" type="tel" inputmode="numeric" maxlength="4" placeholder="选填"></label>
-        <label><span>乘客出行序号（选填）</span><input id="edit-passenger-count" type="number" inputmode="numeric" min="1" step="1" placeholder="第几次" disabled></label>
+        <label><span>乘客手机尾号</span><input id="edit-passenger" type="tel" inputmode="numeric" maxlength="4" placeholder="1234"></label>
+        <label><span>乘客出行次数</span><input id="edit-passenger-count" type="number" inputmode="numeric" min="1" step="1" placeholder="—" disabled></label>
       </div>
       <p class="form-error" id="edit-error" role="alert"></p>
       <div class="sheet-actions split-actions">
         <button type="button" class="danger-button" id="delete-trip">删除记录</button>
         <button type="button" class="primary-button" id="save-trip">保存修改</button>
       </div>
+    </form>
+  </dialog>
+
+  <dialog id="all-records-dialog" class="sheet-dialog all-records-dialog">
+    <form method="dialog" class="sheet all-records-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="section-kicker">历史明细</p><h2>全部记录</h2></div>
+        <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
+      </div>
+      <p class="sheet-description" id="all-records-meta">暂无记录</p>
+      <div class="all-records-list" id="all-records-list"></div>
     </form>
   </dialog>
 
