@@ -391,6 +391,7 @@
     $('#edit-id').value = record.id;
     $('#edit-platform').innerHTML = state.platforms.map((platform) => '<option value="' + escapeHtml(platform.id) + '" ' + (platform.id === record.platformId ? 'selected' : '') + '>' + escapeHtml(platform.name) + '</option>').join('');
     $('#edit-datetime').value = toDatetimeLocal(new Date(record.timestamp));
+    updateEditDateTimeDisplay();
     $('#edit-amount').value = record.amount;
     $('#edit-distance').value = record.distance;
     $('#edit-passenger').value = record.passenger;
@@ -399,6 +400,19 @@
     $('#edit-passenger-count').placeholder = '—';
     $('#edit-error').textContent = '';
     $('#edit-dialog').showModal();
+  }
+
+  function updateEditDateTimeDisplay() {
+    const value = $('#edit-datetime').value;
+    $('#edit-datetime-display').value = value ? value.replace('T', ' ') : '请选择时间';
+  }
+
+  function openEditDateTimePicker() {
+    const input = $('#edit-datetime');
+    input.focus({ preventScroll: true });
+    if (typeof input.showPicker === 'function') {
+      try { input.showPicker(); } catch (error) { /* 系统会继续处理这次原生点击 */ }
+    }
   }
 
   function saveEditedTrip() {
@@ -680,22 +694,12 @@
       container.innerHTML = '<div class="compact-chart-empty">暂无数据</div>';
       return;
     }
-    const width = Math.max(180, sorted.length * 38 + 20);
-    const height = 170;
-    const margin = { top: 30, right: 10, bottom: 35, left: 10 };
-    const plotWidth = width - margin.left - margin.right;
-    const plotHeight = height - margin.top - margin.bottom;
-    const slot = plotWidth / sorted.length;
-    const barWidth = Math.min(20, slot * .58);
     const max = Math.max.apply(null, sorted.map((row) => row.rate));
-    const bars = sorted.map((row, index) => {
-      const barHeight = max ? row.rate / (max * 1.12) * plotHeight : 0;
-      const x = margin.left + slot * index + (slot - barWidth) / 2;
-      const y = margin.top + plotHeight - barHeight;
-      const label = Array.from(row.platform.name === '私下交易' ? '私下' : row.platform.name).slice(0, 2).join('');
-      return '<g><title>' + escapeHtml(row.platform.name) + '：¥' + moneyFormatter.format(row.rate) + '/km</title><rect class="rate-bar" x="' + x + '" y="' + y + '" width="' + barWidth + '" height="' + barHeight + '" rx="4" style="--bar-color:' + row.platform.color + '"/><text class="rate-value" x="' + (x + barWidth / 2) + '" y="' + Math.max(12, y - 5) + '" text-anchor="middle">¥' + row.rate.toFixed(1) + '</text><text class="rate-label" x="' + (x + barWidth / 2) + '" y="' + (height - 13) + '" text-anchor="middle">' + escapeHtml(label) + '</text></g>';
+    const bars = sorted.map((row) => {
+      const width = max ? Math.max(4, row.rate / max * 100) : 0;
+      return '<div class="rate-horizontal-row" aria-label="' + escapeHtml(row.platform.name) + '，每公里 ' + moneyFormatter.format(row.rate) + ' 元"><div class="rate-horizontal-meta"><span>' + escapeHtml(row.platform.name) + '</span><b>¥' + moneyFormatter.format(row.rate) + '</b></div><div class="rate-horizontal-track"><span class="rate-horizontal-fill" style="--bar-color:' + row.platform.color + ';width:' + width + '%"></span></div></div>';
     }).join('');
-    container.innerHTML = '<svg class="rate-svg" viewBox="0 0 ' + width + ' ' + height + '" style="min-width:' + width + 'px" role="img" aria-label="各平台平均每公里收入"><line class="rate-baseline" x1="' + margin.left + '" x2="' + (width - margin.right) + '" y1="' + (margin.top + plotHeight) + '" y2="' + (margin.top + plotHeight) + '"/>' + bars + '</svg>';
+    container.innerHTML = '<div class="rate-horizontal-chart" role="img" aria-label="各平台平均每公里单价">' + bars + '</div>';
   }
 
   function aggregateByKey(records, keyFn) {
@@ -1084,6 +1088,9 @@
       event.target.value = event.target.value.replace(/\D/g, '').slice(0, 4);
       updateEditPassengerTripNumber(true);
     });
+    $('#edit-datetime').addEventListener('input', updateEditDateTimeDisplay);
+    $('#edit-datetime').addEventListener('change', updateEditDateTimeDisplay);
+    $('.edit-datetime-control').addEventListener('click', openEditDateTimePicker);
     $$('.bottom-nav button').forEach((button) => button.addEventListener('click', () => switchPage(button.dataset.page)));
     $$('.range-tabs button').forEach((button) => button.addEventListener('click', () => setRange(button.dataset.range)));
     $('#period-prev').addEventListener('click', () => movePeriod(-1));
