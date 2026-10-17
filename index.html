@@ -212,7 +212,7 @@
       <input id="edit-id" type="hidden">
       <div class="edit-grid">
         <label><span>平台</span><select id="edit-platform"></select></label>
-        <label><span>日期与时间</span><input id="edit-datetime" type="datetime-local" required></label>
+        <label><span>日期与时间</span><span class="edit-datetime-control"><input id="edit-datetime-display" type="text" readonly tabindex="-1" aria-hidden="true"><input id="edit-datetime" type="datetime-local" required aria-label="日期与时间"></span></label>
         <label><span>收入（元）</span><input id="edit-amount" type="number" inputmode="decimal" min="0" step="0.01" required></label>
         <label><span>里程（km）</span><input id="edit-distance" type="number" inputmode="decimal" min="0" step="0.1" required></label>
         <label><span>乘客手机尾号</span><input id="edit-passenger" type="tel" inputmode="numeric" maxlength="4" placeholder="1234"></label>
