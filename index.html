@@ -145,27 +145,23 @@
           </div>
         </section>
 
-        <section class="chart-section" aria-labelledby="trend-title">
-          <div class="section-heading chart-heading">
-            <div>
-              <p class="section-kicker">变化趋势</p>
-              <h2 id="trend-title">收入趋势</h2>
-            </div>
-            <div class="metric-control" role="group" aria-label="图表指标">
-              <button type="button" data-metric="income" class="active" aria-pressed="true">收入</button>
-              <button type="button" data-metric="distance" aria-pressed="false">里程</button>
-              <button type="button" data-metric="count" aria-pressed="false">订单</button>
-            </div>
+        <section class="chart-section trend-section" aria-label="收入趋势">
+          <div class="trend-readout" aria-live="polite">
+            <span id="trend-selection-label">收入趋势</span>
+            <strong id="trend-selection-value">—</strong>
           </div>
           <div class="chart-wrap" id="trend-chart"></div>
         </section>
 
-        <section class="chart-section platform-chart-section" aria-labelledby="platform-chart-title">
-          <div class="section-heading compact">
-            <h2 id="platform-chart-title">平台收入</h2>
-            <span id="platform-chart-meta">当前范围</span>
-          </div>
-          <div class="bar-chart" id="platform-chart"></div>
+        <section class="platform-insights-grid" aria-label="平台统计">
+          <article class="platform-insight">
+            <h2>收入占比</h2>
+            <div id="platform-share-chart"></div>
+          </article>
+          <article class="platform-insight">
+            <h2>平均每公里单价</h2>
+            <div class="rate-chart-scroll" id="platform-rate-chart"></div>
+          </article>
         </section>
       </section>
     </main>
