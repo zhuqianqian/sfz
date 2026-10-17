@@ -23,9 +23,11 @@
     page: 'record',
     range: 'day',
     cursor: new Date(),
-    metric: 'income'
+    trendPointIndex: null
   };
   let passengerTripNumberDirty = false;
+  let reopenAllRecordsAfterEdit = false;
+  let trendResizeTimer = null;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -482,11 +484,6 @@
   }
 
   function renderStats() {
-    $$('.metric-control button').forEach((button) => {
-      const active = button.dataset.metric === state.metric;
-      button.classList.toggle('active', active);
-      button.setAttribute('aria-pressed', String(active));
-    });
     renderPeriodLabel();
     renderCalendar();
     const records = scopeRecords();
@@ -496,7 +493,7 @@
     $('#scope-distance').textContent = distance.toFixed(1);
     $('#scope-rate').textContent = distance > 0 ? moneyFormatter.format(income / distance) : '0.00';
     renderTrendChart();
-    renderPlatformChart(records);
+    renderPlatformInsights(records);
     updateExportLabels(records);
   }
 
@@ -533,7 +530,7 @@
       panel.innerHTML = '<div class="period-grid">' + Array.from({ length: 12 }, (_, month) => {
         const value = aggregates.get(month) ? aggregates.get(month).income : 0;
         const current = year === now.getFullYear() && month === now.getMonth();
-        return '<div class="period-cell ' + (current ? 'current' : '') + '"><span>' + (month + 1) + ' 月</span><strong>' + (value ? '¥' + compactNumber(value) : '—') + '</strong></div>';
+        return '<div class="period-cell ' + (current ? 'current' : '') + '"><span>' + (month + 1) + ' 月</span><strong>' + (value ? '¥' + compactIncome(value, true) : '—') + '</strong></div>';
       }).join('') + '</div>';
       return;
     }
@@ -542,7 +539,7 @@
     panel.innerHTML = '<div class="period-grid year-grid">' + Array.from({ length: 6 }, (_, index) => {
       const year = start + index;
       const value = aggregates.get(year) ? aggregates.get(year).income : 0;
-      return '<div class="period-cell ' + (year === now.getFullYear() ? 'current' : '') + '"><span>' + year + ' 年</span><strong>' + (value ? '¥' + compactNumber(value) : '—') + '</strong></div>';
+      return '<div class="period-cell ' + (year === now.getFullYear() ? 'current' : '') + '"><span>' + year + ' 年</span><strong>' + (value ? '¥' + compactIncome(value, true) : '—') + '</strong></div>';
     }).join('') + '</div>';
   }
 
@@ -566,17 +563,16 @@
 
   function renderTrendChart() {
     const points = periodPoints();
-    const metric = state.metric;
-    const values = points.map((point) => point[metric]);
+    const values = points.map((point) => point.income);
     const max = Math.max.apply(null, values);
-    const config = metricConfig(metric);
-    $('#trend-title').textContent = config.label + '趋势';
-    $('#platform-chart-title').textContent = '平台' + config.label;
     if (max <= 0) {
-      $('#trend-chart').innerHTML = '<div class="chart-empty">当前范围暂无' + config.label + '数据</div>';
+      $('#trend-selection-label').textContent = '收入趋势';
+      $('#trend-selection-value').textContent = '—';
+      $('#trend-chart').innerHTML = '<div class="chart-empty">当前范围暂无收入数据</div>';
       return;
     }
-    const width = 360;
+    const chartContainer = $('#trend-chart');
+    const width = Math.max(320, Math.round(chartContainer.clientWidth - 16) || 360);
     const height = 200;
     const margin = { top: 10, right: 11, bottom: 27, left: 43 };
     const chartWidth = width - margin.left - margin.right;
@@ -584,24 +580,53 @@
     const paddedMax = max * 1.12;
     const x = (index) => margin.left + (points.length === 1 ? chartWidth / 2 : index * chartWidth / (points.length - 1));
     const y = (value) => margin.top + chartHeight - (value / paddedMax) * chartHeight;
-    const line = points.map((point, index) => (index ? 'L' : 'M') + ' ' + x(index).toFixed(2) + ' ' + y(point[metric]).toFixed(2)).join(' ');
+    const line = points.map((point, index) => (index ? 'L' : 'M') + ' ' + x(index).toFixed(2) + ' ' + y(point.income).toFixed(2)).join(' ');
     const area = line + ' L ' + x(points.length - 1).toFixed(2) + ' ' + (margin.top + chartHeight) + ' L ' + x(0).toFixed(2) + ' ' + (margin.top + chartHeight) + ' Z';
     const tickIndexes = chartTickIndexes(points.length);
     const yTicks = [0, paddedMax / 2, paddedMax];
-    const dots = points.map((point, index) => point[metric] > 0
-      ? '<circle class="dot ' + (index === lastPositiveIndex(values) ? 'last-dot' : '') + '" cx="' + x(index) + '" cy="' + y(point[metric]) + '" r="3.2"><title>' + point.label + '：' + formatMetric(point[metric], metric) + '</title></circle>'
-      : '').join('');
-    const grids = yTicks.map((value) => '<line class="grid-line" x1="' + margin.left + '" x2="' + (width - margin.right) + '" y1="' + y(value) + '" y2="' + y(value) + '"/><text class="axis-label" x="' + (margin.left - 6) + '" y="' + (y(value) + 3) + '" text-anchor="end">' + compactNumber(value) + '</text>').join('');
+    const fallbackIndex = lastPositiveIndex(values);
+    const selectedIndex = Number.isInteger(state.trendPointIndex) && state.trendPointIndex >= 0 && state.trendPointIndex < points.length
+      ? state.trendPointIndex
+      : fallbackIndex;
+    state.trendPointIndex = selectedIndex;
+    const selectedPoint = points[selectedIndex];
+    $('#trend-selection-label').textContent = trendPointDateLabel(selectedPoint.label);
+    $('#trend-selection-value').textContent = '¥' + moneyFormatter.format(selectedPoint.income);
+    const dots = points.map((point, index) => '<circle class="dot ' + (point.income ? '' : 'zero-dot') + '" cx="' + x(index) + '" cy="' + y(point.income) + '" r="' + (point.income ? '3.2' : '2.2') + '"><title>' + trendPointDateLabel(point.label) + '：¥' + moneyFormatter.format(point.income) + '</title></circle>').join('');
+    const grids = yTicks.map((value) => '<line class="grid-line" x1="' + margin.left + '" x2="' + (width - margin.right) + '" y1="' + y(value) + '" y2="' + y(value) + '"/><text class="axis-label" x="' + (margin.left - 6) + '" y="' + (y(value) + 3) + '" text-anchor="end">' + compactIncome(value, state.range !== 'day') + '</text>').join('');
     const labels = tickIndexes.map((index) => '<text class="axis-label" x="' + x(index) + '" y="' + (height - 7) + '" text-anchor="middle">' + points[index].label + '</text>').join('');
     $('#trend-chart').innerHTML = '<svg class="trend-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-labelledby="trend-svg-title trend-svg-desc">' +
-      '<title id="trend-svg-title">' + config.label + '趋势</title><desc id="trend-svg-desc">当前范围内' + config.label + '最高值为 ' + formatMetric(max, metric) + '</desc>' +
+      '<title id="trend-svg-title">收入趋势</title><desc id="trend-svg-desc">当前范围内最高收入为 ¥' + moneyFormatter.format(max) + '，轻触图表可查看各点金额</desc>' +
       '<defs><linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".22"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>' +
-      grids + '<path class="area" d="' + area + '"/><path class="line" d="' + line + '"/>' + dots + labels + '</svg>';
+      grids + '<path class="area" d="' + area + '"/><path class="line" d="' + line + '"/>' +
+      '<line class="selection-guide" x1="' + x(selectedIndex) + '" x2="' + x(selectedIndex) + '" y1="' + margin.top + '" y2="' + (margin.top + chartHeight) + '"/>' +
+      dots + '<circle class="selected-dot" cx="' + x(selectedIndex) + '" cy="' + y(selectedPoint.income) + '" r="5"/>' + labels +
+      '<rect class="trend-hit-area" x="' + margin.left + '" y="' + margin.top + '" width="' + chartWidth + '" height="' + chartHeight + '"/></svg>';
   }
 
-  function renderPlatformChart(records) {
-    const metric = state.metric;
-    const config = metricConfig(metric);
+  function trendPointDateLabel(label) {
+    if (state.range === 'day') return (state.cursor.getMonth() + 1) + '月' + label + '日';
+    if (state.range === 'month') return state.cursor.getFullYear() + '年' + label;
+    return label + '年';
+  }
+
+  function selectTrendPoint(event) {
+    const svg = event.target.closest('.trend-svg');
+    if (!svg) return;
+    const matrix = svg.getScreenCTM();
+    if (!matrix) return;
+    const points = periodPoints();
+    const pointer = svg.createSVGPoint();
+    pointer.x = event.clientX;
+    pointer.y = event.clientY;
+    const svgX = pointer.matrixTransform(matrix.inverse()).x;
+    const chartWidth = svg.viewBox.baseVal.width - 43 - 11;
+    const index = Math.max(0, Math.min(points.length - 1, Math.round((svgX - 43) / chartWidth * (points.length - 1))));
+    state.trendPointIndex = index;
+    renderTrendChart();
+  }
+
+  function platformStats(records) {
     const data = new Map();
     records.forEach((record) => {
       const platform = platformFor(record);
@@ -611,16 +636,66 @@
       item.distance += record.distance;
       item.count += 1;
     });
-    const rows = Array.from(data.values()).sort((a, b) => b[metric] - a[metric]);
-    const max = Math.max.apply(null, [0].concat(rows.map((row) => row[metric])));
-    $('#platform-chart-meta').textContent = '按' + config.label;
+    return Array.from(data.values()).map((item) => Object.assign(item, { rate: item.distance > 0 ? item.income / item.distance : 0 }));
+  }
+
+  function renderPlatformInsights(records) {
+    const rows = platformStats(records);
+    renderPlatformShareChart(rows);
+    renderPlatformRateChart(rows);
+  }
+
+  function renderPlatformShareChart(rows) {
+    const container = $('#platform-share-chart');
     if (!rows.length) {
-      $('#platform-chart').innerHTML = '<div class="empty-state"><strong>暂无平台数据</strong><p>记录订单后，这里会自动按平台汇总。</p></div>';
+      container.innerHTML = '<div class="compact-chart-empty">暂无数据</div>';
       return;
     }
-    $('#platform-chart').innerHTML = rows.map((row) => '<div class="bar-row"><span class="bar-label"><span class="bar-logo ' + (row.platform.icon ? 'has-icon' : '') + '" style="--platform-color:' + row.platform.color + '">' + platformMark(row.platform) + '</span><span class="bar-name">' + escapeHtml(row.platform.name) + '</span></span>' +
-      '<span class="bar-track"><span class="bar-fill" style="--bar-color:' + row.platform.color + ';width:' + (max ? Math.max(3, row[metric] / max * 100) : 0) + '%"></span></span>' +
-      '<span class="bar-value">' + formatMetric(row[metric], metric) + '</span></div>').join('');
+    const sorted = Array.from(rows).sort((a, b) => b.income - a.income);
+    const total = sum(sorted, 'income');
+    const radius = 48;
+    const circumference = Math.PI * 2 * radius;
+    let offset = 0;
+    const segments = sorted.map((row) => {
+      const length = row.income / total * circumference;
+      const visibleLength = Math.max(.8, length - 1.8);
+      const markup = '<circle class="donut-segment" cx="80" cy="80" r="' + radius + '" transform="rotate(-90 80 80)" style="--segment-color:' + row.platform.color + '" stroke-dasharray="' + visibleLength + ' ' + (circumference - visibleLength) + '" stroke-dashoffset="' + (-offset) + '"><title>' + escapeHtml(row.platform.name) + '：¥' + moneyFormatter.format(row.income) + '</title></circle>';
+      offset += length;
+      return markup;
+    }).join('');
+    const legend = sorted.map((row) => {
+      const percent = row.income / total * 100;
+      const percentText = percent >= 10 ? percent.toFixed(0) : percent.toFixed(1);
+      const amountText = String(Number(row.income.toFixed(2)));
+      return '<div class="donut-legend-row"><span class="donut-swatch" style="--segment-color:' + row.platform.color + '"></span><span>' + escapeHtml(row.platform.name) + '</span><b>' + amountText + '（' + percentText + '%）</b></div>';
+    }).join('');
+    container.innerHTML = '<svg class="donut-svg" viewBox="0 0 160 160" role="img" aria-label="各平台收入占比和具体金额"><circle class="donut-track" cx="80" cy="80" r="' + radius + '"/>' + segments +
+      '<text class="donut-total-label" x="80" y="75" text-anchor="middle">总收入</text><text class="donut-total" x="80" y="94" text-anchor="middle">¥' + compactIncome(total, true) + '</text></svg><div class="donut-legend">' + legend + '</div>';
+  }
+
+  function renderPlatformRateChart(rows) {
+    const container = $('#platform-rate-chart');
+    const sorted = Array.from(rows).filter((row) => row.distance > 0).sort((a, b) => b.rate - a.rate);
+    if (!sorted.length) {
+      container.innerHTML = '<div class="compact-chart-empty">暂无数据</div>';
+      return;
+    }
+    const width = Math.max(180, sorted.length * 38 + 20);
+    const height = 170;
+    const margin = { top: 30, right: 10, bottom: 35, left: 10 };
+    const plotWidth = width - margin.left - margin.right;
+    const plotHeight = height - margin.top - margin.bottom;
+    const slot = plotWidth / sorted.length;
+    const barWidth = Math.min(20, slot * .58);
+    const max = Math.max.apply(null, sorted.map((row) => row.rate));
+    const bars = sorted.map((row, index) => {
+      const barHeight = max ? row.rate / (max * 1.12) * plotHeight : 0;
+      const x = margin.left + slot * index + (slot - barWidth) / 2;
+      const y = margin.top + plotHeight - barHeight;
+      const label = Array.from(row.platform.name === '私下交易' ? '私下' : row.platform.name).slice(0, 2).join('');
+      return '<g><title>' + escapeHtml(row.platform.name) + '：¥' + moneyFormatter.format(row.rate) + '/km</title><rect class="rate-bar" x="' + x + '" y="' + y + '" width="' + barWidth + '" height="' + barHeight + '" rx="4" style="--bar-color:' + row.platform.color + '"/><text class="rate-value" x="' + (x + barWidth / 2) + '" y="' + Math.max(12, y - 5) + '" text-anchor="middle">¥' + row.rate.toFixed(1) + '</text><text class="rate-label" x="' + (x + barWidth / 2) + '" y="' + (height - 13) + '" text-anchor="middle">' + escapeHtml(label) + '</text></g>';
+    }).join('');
+    container.innerHTML = '<svg class="rate-svg" viewBox="0 0 ' + width + ' ' + height + '" style="min-width:' + width + 'px" role="img" aria-label="各平台平均每公里收入"><line class="rate-baseline" x1="' + margin.left + '" x2="' + (width - margin.right) + '" y1="' + (margin.top + plotHeight) + '" y2="' + (margin.top + plotHeight) + '"/>' + bars + '</svg>';
   }
 
   function aggregateByKey(records, keyFn) {
@@ -638,20 +713,6 @@
 
   function emptyAggregate() { return { income: 0, distance: 0, count: 0 }; }
 
-  function metricConfig(metric) {
-    return {
-      income: { label: '收入', unit: '元' },
-      distance: { label: '里程', unit: 'km' },
-      count: { label: '订单', unit: '单' }
-    }[metric];
-  }
-
-  function formatMetric(value, metric) {
-    if (metric === 'income') return '¥' + compactNumber(value);
-    if (metric === 'distance') return compactNumber(value) + ' km';
-    return Math.round(value) + ' 单';
-  }
-
   function chartTickIndexes(length) {
     if (length <= 5) return Array.from({ length: length }, (_, index) => index);
     return Array.from(new Set([0, Math.round((length - 1) / 3), Math.round((length - 1) * 2 / 3), length - 1]));
@@ -668,11 +729,13 @@
     else if (state.range === 'month') cursor.setFullYear(cursor.getFullYear() + direction);
     else cursor.setFullYear(cursor.getFullYear() + direction * 6);
     state.cursor = cursor;
+    state.trendPointIndex = null;
     renderStats();
   }
 
   function setRange(range) {
     state.range = range;
+    state.trendPointIndex = null;
     $$('.range-tabs button').forEach((button) => {
       const active = button.dataset.range === range;
       button.classList.toggle('active', active);
@@ -991,7 +1054,10 @@
     });
     $('#today-list').addEventListener('click', (event) => {
       const item = event.target.closest('[data-record-id]');
-      if (item) openEditDialog(item.dataset.recordId);
+      if (item) {
+        reopenAllRecordsAfterEdit = false;
+        openEditDialog(item.dataset.recordId);
+      }
     });
     $('#open-all-records').addEventListener('click', () => {
       renderAllRecords();
@@ -1000,8 +1066,17 @@
     $('#all-records-list').addEventListener('click', (event) => {
       const item = event.target.closest('[data-record-id]');
       if (!item) return;
+      reopenAllRecordsAfterEdit = true;
       $('#all-records-dialog').close();
       requestAnimationFrame(() => openEditDialog(item.dataset.recordId));
+    });
+    $('#edit-dialog').addEventListener('close', () => {
+      if (!reopenAllRecordsAfterEdit) return;
+      reopenAllRecordsAfterEdit = false;
+      requestAnimationFrame(() => {
+        renderAllRecords();
+        $('#all-records-dialog').showModal();
+      });
     });
     $('#save-trip').addEventListener('click', saveEditedTrip);
     $('#delete-trip').addEventListener('click', deleteEditedTrip);
@@ -1013,11 +1088,13 @@
     $$('.range-tabs button').forEach((button) => button.addEventListener('click', () => setRange(button.dataset.range)));
     $('#period-prev').addEventListener('click', () => movePeriod(-1));
     $('#period-next').addEventListener('click', () => movePeriod(1));
-    $('#period-label').addEventListener('click', () => { state.cursor = new Date(); renderStats(); });
-    $$('.metric-control button').forEach((button) => button.addEventListener('click', () => {
-      state.metric = button.dataset.metric;
-      renderStats();
-    }));
+    $('#period-label').addEventListener('click', () => { state.cursor = new Date(); state.trendPointIndex = null; renderStats(); });
+    $('#trend-chart').addEventListener('click', selectTrendPoint);
+    window.addEventListener('resize', () => {
+      if (state.page !== 'stats') return;
+      clearTimeout(trendResizeTimer);
+      trendResizeTimer = setTimeout(renderTrendChart, 120);
+    });
     $('#open-export').addEventListener('click', openExportDialog);
     $('#export-scope').addEventListener('click', () => exportCsv(scopeRecords(), '当前范围'));
     $('#export-all').addEventListener('click', () => exportCsv(state.records, '全部'));
@@ -1059,6 +1136,17 @@
     if (Math.abs(value) >= 1000) return (value / 1000).toFixed(value >= 10000 ? 0 : 1) + 'k';
     if (Number.isInteger(value)) return String(value);
     return value.toFixed(value < 10 ? 1 : 0);
+  }
+  function compactIncome(value, preferWan) {
+    if (preferWan && Math.abs(value) < 10000) {
+      return String(Number(value.toFixed(2)));
+    }
+    if (preferWan) {
+      const absolute = Math.abs(value);
+      const digits = absolute >= 100000 ? 0 : absolute >= 10000 ? 1 : 2;
+      return (value / 10000).toFixed(digits).replace(/(\.\d*?[1-9])0+$|\.0+$/, '$1') + '万';
+    }
+    return compactNumber(value);
   }
   function toDatetimeLocal(date) {
     const pad = (value) => String(value).padStart(2, '0');
