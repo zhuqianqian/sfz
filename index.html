@@ -107,7 +107,6 @@
       <section class="page" id="stats-page" aria-labelledby="stats-tab" hidden>
         <div class="stats-title-row">
           <div>
-            <p class="eyebrow">本机数据</p>
             <h1>统计</h1>
           </div>
           <button class="export-button" id="open-export" type="button">
@@ -116,16 +115,18 @@
           </button>
         </div>
 
-        <div class="range-tabs" role="tablist" aria-label="统计范围">
-          <button type="button" data-range="day" class="active" role="tab" aria-selected="true">日</button>
-          <button type="button" data-range="month" role="tab" aria-selected="false">月</button>
-          <button type="button" data-range="year" role="tab" aria-selected="false">年</button>
-        </div>
+        <div class="stats-time-controls">
+          <div class="range-tabs" role="tablist" aria-label="统计范围">
+            <button type="button" data-range="day" class="active" role="tab" aria-selected="true">日</button>
+            <button type="button" data-range="month" role="tab" aria-selected="false">月</button>
+            <button type="button" data-range="year" role="tab" aria-selected="false">年</button>
+          </div>
 
-        <div class="period-navigator">
-          <button type="button" id="period-prev" aria-label="上一个周期">‹</button>
-          <button class="period-label" id="period-label" type="button" aria-label="回到当前周期">—</button>
-          <button type="button" id="period-next" aria-label="下一个周期">›</button>
+          <div class="period-navigator">
+            <button type="button" id="period-prev" aria-label="上一个周期">‹</button>
+            <button class="period-label" id="period-label" type="button" aria-label="回到当前周期">—</button>
+            <button type="button" id="period-next" aria-label="下一个周期">›</button>
+          </div>
         </div>
 
         <section class="calendar-panel" id="calendar-panel" aria-label="日期收入"></section>
@@ -136,12 +137,12 @@
             <strong>¥<span id="scope-income">0.00</span></strong>
           </div>
           <div>
-            <span>总里程</span>
-            <strong><span id="scope-distance">0.0</span><small> km</small></strong>
-          </div>
-          <div>
             <span>每公里</span>
             <strong>¥<span id="scope-rate">0.00</span></strong>
+          </div>
+          <div>
+            <span>总里程</span>
+            <strong><span id="scope-distance">0.0</span><small> km</small></strong>
           </div>
         </section>
 

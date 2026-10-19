@@ -131,15 +131,25 @@
   }
 
   function renderPlatformPicker() {
-    const visible = state.platforms.slice(0, 5);
-    if (!visible.some((platform) => platform.id === state.selectedPlatformId)) {
-      state.selectedPlatformId = visible[0] ? visible[0].id : state.platforms[0].id;
+    const picker = $('#platform-picker');
+    const previousScroll = picker.scrollLeft;
+    if (!state.platforms.some((platform) => platform.id === state.selectedPlatformId)) {
+      state.selectedPlatformId = state.platforms[0].id;
     }
-    $('#platform-picker').innerHTML = visible.map((platform) => {
+    picker.innerHTML = state.platforms.map((platform) => {
       const selected = platform.id === state.selectedPlatformId;
       return '<button class="platform-option ' + (selected ? 'selected' : '') + '" type="button" role="radio" aria-checked="' + selected + '" data-platform-id="' + escapeHtml(platform.id) + '" style="--platform-color:' + platform.color + '">' +
         '<b class="' + (platform.icon ? 'has-icon' : '') + '">' + platformMark(platform) + '</b><span>' + escapeHtml(platform.name) + '</span></button>';
     }).join('');
+    requestAnimationFrame(() => {
+      if (previousScroll > 0) {
+        picker.scrollLeft = previousScroll;
+        return;
+      }
+      const selectedIndex = state.platforms.findIndex((platform) => platform.id === state.selectedPlatformId);
+      const selected = picker.querySelector('.platform-option.selected');
+      if (selectedIndex >= 5 && selected) picker.scrollLeft = selected.offsetLeft + selected.offsetWidth - picker.clientWidth + 4;
+    });
   }
 
   function renderHome() {

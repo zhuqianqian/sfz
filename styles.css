@@ -231,15 +231,24 @@ h2 {
 
 .platform-picker {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-auto-columns: calc((100% - 32px) / 5);
+  grid-auto-flow: column;
   gap: 8px;
-  margin-bottom: 20px;
+  margin: 0 -4px 8px;
+  padding: 8px 4px 12px;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
 }
+.platform-picker::-webkit-scrollbar { display: none; }
 .platform-option {
   min-width: 0;
   padding: 0;
   border: 0;
   background: transparent;
+  scroll-snap-align: start;
   text-align: center;
 }
 .platform-option b {
@@ -472,9 +481,20 @@ label > span:first-child em { font-style: normal; font-weight: 400; }
   border-radius: 14px;
   background: var(--surface-2);
 }
+.stats-time-controls {
+  position: sticky;
+  z-index: 15;
+  top: var(--safe-top);
+  margin: 0 -18px;
+  padding: 6px 18px 4px;
+  border-bottom: 1px solid color-mix(in srgb, var(--line) 52%, transparent);
+  background: color-mix(in srgb, var(--bg) 92%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
 .range-tabs button { height: 38px; border: 0; border-radius: 10px; background: transparent; color: var(--muted); font-size: 13px; font-weight: 650; }
 .range-tabs button.active { background: var(--surface); color: var(--ink); box-shadow: 0 3px 10px rgba(23, 35, 33, .07); }
-.period-navigator { display: grid; grid-template-columns: 46px 1fr 46px; align-items: center; margin: 15px 0 8px; }
+.period-navigator { display: grid; grid-template-columns: 46px 1fr 46px; align-items: center; margin: 8px 0 2px; }
 .period-navigator button { height: 42px; border: 0; background: transparent; }
 .period-navigator > button:not(.period-label) { color: var(--muted); font-size: 31px; font-weight: 300; }
 .period-label { font-size: 17px; font-weight: 700; }
@@ -534,16 +554,16 @@ label > span:first-child em { font-style: normal; font-weight: 400; }
 
 .stats-summary {
   display: grid;
-  grid-template-columns: 1.2fr 1fr 1fr;
+  grid-template-columns: minmax(0, 1.15fr) minmax(0, .8fr) minmax(0, 1.15fr);
   gap: 1px;
   margin-top: 14px;
   overflow: hidden;
   border-radius: var(--radius-lg);
   background: var(--line);
 }
-.stats-summary > div { padding: 15px 13px; background: var(--surface); }
+.stats-summary > div { min-width: 0; padding: 15px 13px; background: var(--surface); text-align: center; }
 .stats-summary > div > span { display: block; margin-bottom: 6px; color: var(--muted); font-size: 10px; }
-.stats-summary strong { font-size: 17px; font-variant-numeric: tabular-nums; }
+.stats-summary strong { display: block; font-size: clamp(14px, 4.3vw, 17px); font-variant-numeric: tabular-nums; letter-spacing: -.2px; white-space: nowrap; }
 .stats-summary small { font-size: 10px; font-weight: 500; }
 
 .chart-section { margin-top: 26px; }
@@ -751,8 +771,9 @@ dialog { color: var(--ink); }
 
 @media (max-width: 374px) {
   .app-shell { padding-right: 13px; padding-left: 13px; }
+  .stats-time-controls { margin-right: -13px; margin-left: -13px; padding-right: 13px; padding-left: 13px; }
   .entry-panel { padding: 17px 14px; }
-  .platform-picker { gap: 3px; }
+  .platform-picker { grid-auto-columns: calc((100% - 12px) / 5); gap: 3px; }
   .platform-option b { width: 43px; height: 43px; }
   .passenger-row { grid-template-columns: minmax(0, 1.2fr) .68fr 69px; gap: 6px; }
   .record-button span { font-size: 12px; }
