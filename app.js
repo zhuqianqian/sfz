@@ -249,9 +249,10 @@
     banner.classList.toggle('active', nextActive);
     summaryBanner.classList.toggle('professional-active', nextActive);
     professionalBannerInitialized = true;
-    $('#professional-status-text').textContent = shift ? '出车中' : '未出车';
+    $('#professional-status-text').textContent = shift ? '出车中' : '当前模式';
+    $('#professional-mode-title').textContent = shift ? '专职模式' : '顺路模式';
     if (!shift) {
-      $('#professional-content').innerHTML = '<div class="professional-idle"><span>按需开启</span><button type="button" class="professional-action" data-shift-action="start">出车</button></div>';
+      $('#professional-content').innerHTML = '<div class="professional-idle"><span>顺路接单</span><button type="button" class="professional-action" data-shift-action="start">出车</button></div>';
       return;
     }
     const summary = shiftSummary(shift);
@@ -523,15 +524,26 @@
       return '<button class="platform-option ' + (selected ? 'selected' : '') + '" type="button" role="radio" aria-checked="' + selected + '" data-platform-id="' + escapeHtml(platform.id) + '" style="--platform-color:' + platform.color + '">' +
         '<b class="' + (platform.icon ? 'has-icon' : '') + '">' + platformMark(platform) + '</b><span>' + escapeHtml(platform.name) + '</span></button>';
     }).join('');
+    picker.classList.toggle('has-overflow', state.platforms.length > 5);
     requestAnimationFrame(() => {
       if (previousScroll > 0) {
         picker.scrollLeft = previousScroll;
-        return;
+      } else {
+        const selectedIndex = state.platforms.findIndex((platform) => platform.id === state.selectedPlatformId);
+        const selected = picker.querySelector('.platform-option.selected');
+        if (selectedIndex >= 5 && selected) picker.scrollLeft = selected.offsetLeft + selected.offsetWidth - picker.clientWidth + 4;
       }
-      const selectedIndex = state.platforms.findIndex((platform) => platform.id === state.selectedPlatformId);
-      const selected = picker.querySelector('.platform-option.selected');
-      if (selectedIndex >= 5 && selected) picker.scrollLeft = selected.offsetLeft + selected.offsetWidth - picker.clientWidth + 4;
+      updatePlatformScrollCues();
     });
+  }
+
+  function updatePlatformScrollCues() {
+    const picker = $('#platform-picker');
+    const overflow = picker.scrollWidth > picker.clientWidth + 2;
+    const atStart = picker.scrollLeft <= 2;
+    const atEnd = picker.scrollLeft + picker.clientWidth >= picker.scrollWidth - 2;
+    picker.classList.toggle('can-scroll-left', overflow && !atStart);
+    picker.classList.toggle('can-scroll-right', overflow && !atEnd);
   }
 
   function renderHome() {
@@ -1599,6 +1611,7 @@
       saveState();
       renderPlatformPicker();
     });
+    $('#platform-picker').addEventListener('scroll', updatePlatformScrollCues, { passive: true });
     $('#trip-form').addEventListener('submit', submitTrip);
     $('#professional-content').addEventListener('click', (event) => {
       const action = event.target.closest('[data-shift-action]');
@@ -1698,6 +1711,7 @@
     $('#period-label').addEventListener('click', () => { state.cursor = new Date(); state.trendPointIndex = null; renderStats(); });
     $('#trend-chart').addEventListener('click', selectTrendPoint);
     window.addEventListener('resize', () => {
+      updatePlatformScrollCues();
       if (state.page !== 'stats') return;
       clearTimeout(trendResizeTimer);
       trendResizeTimer = setTimeout(renderTrendChart, 120);
