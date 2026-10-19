@@ -30,16 +30,26 @@
     <main>
       <section class="page active" id="record-page" aria-labelledby="record-tab">
         <section class="summary-banner" aria-label="今日汇总">
-          <div class="summary-main">
-            <span>今日收入</span>
-            <strong><small>¥</small><span id="today-income">0.00</span></strong>
+          <div class="summary-grid">
+            <div class="summary-main">
+              <span>今日收入</span>
+              <strong><small>¥</small><span id="today-income">0.00</span></strong>
+            </div>
+            <div class="summary-divider"></div>
+            <div class="summary-side">
+              <span>今日里程</span>
+              <strong><span id="today-distance">0.0</span><small> km</small></strong>
+              <em><span id="today-count">0</span> 单</em>
+            </div>
           </div>
-          <div class="summary-divider"></div>
-          <div class="summary-side">
-            <span>今日里程</span>
-            <strong><span id="today-distance">0.0</span><small> km</small></strong>
-            <em><span id="today-count">0</span> 单</em>
-          </div>
+
+          <section class="professional-banner" id="professional-banner" aria-labelledby="professional-title">
+            <button class="professional-heading" id="open-shift-history" type="button" aria-label="查看出车记录">
+              <span class="professional-status"><i id="professional-status-dot"></i><span id="professional-status-text">未出车</span></span>
+              <span class="professional-heading-title" id="professional-title">专职模式 <small>记录 ›</small></span>
+            </button>
+            <div id="professional-content"></div>
+          </section>
         </section>
 
         <aside class="install-tip" id="install-tip" hidden>
@@ -146,6 +156,21 @@
           </div>
         </section>
 
+        <section class="professional-stats" id="professional-stats" aria-label="专职模式汇总" hidden>
+          <div>
+            <span>专职跑车</span>
+            <strong id="scope-shift-duration">—</strong>
+          </div>
+          <div>
+            <span>平均时薪</span>
+            <strong>¥<span id="scope-hourly-rate">0.00</span></strong>
+          </div>
+          <div>
+            <span>专职每公里</span>
+            <strong>¥<span id="scope-shift-rate">0.00</span></strong>
+          </div>
+        </section>
+
         <section class="chart-section trend-section" aria-label="收入趋势">
           <div class="trend-readout" aria-live="polite">
             <span id="trend-selection-label">收入趋势</span>
@@ -239,6 +264,105 @@
     </form>
   </dialog>
 
+  <dialog id="start-shift-dialog" class="sheet-dialog">
+    <form method="dialog" class="sheet compact-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="section-kicker">专职模式</p><h2>确认出车</h2></div>
+        <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
+      </div>
+      <p class="sheet-description">确认后将自动记录当前时间。请选择这次行驶里程的记录方式。</p>
+      <div class="mode-toggle" id="start-distance-modes" role="radiogroup" aria-label="里程记录方式">
+        <label><input type="radio" name="start-distance-mode" value="odometer" checked><span>里程表读数</span></label>
+        <label><input type="radio" name="start-distance-mode" value="trip"><span>本次总里程</span></label>
+      </div>
+      <div class="shift-field" id="start-odometer-field">
+        <label>
+          <span>当前里程表</span>
+          <span class="input-shell"><input id="start-odometer" type="number" inputmode="decimal" min="0" step="0.1" placeholder="0.0"><b>km</b></span>
+        </label>
+      </div>
+      <p class="shift-mode-note" id="start-mode-note">收车时再填写结束读数，系统会自动计算总里程。</p>
+      <p class="form-error" id="start-shift-error" role="alert"></p>
+      <div class="sheet-actions split-actions">
+        <button type="submit" class="secondary-button" value="cancel">暂不出车</button>
+        <button type="button" class="primary-button" id="confirm-start-shift">确认出车</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="stop-shift-dialog" class="sheet-dialog">
+    <form method="dialog" class="sheet compact-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="section-kicker">专职模式</p><h2>确认收车</h2></div>
+        <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
+      </div>
+      <div class="shift-confirm-summary">
+        <div><span>本次时长</span><strong id="stop-shift-duration">—</strong></div>
+        <div><span>累计收入</span><strong>¥<span id="stop-shift-income">0.00</span></strong></div>
+        <div><span>订单数</span><strong><span id="stop-shift-count">0</span> 单</strong></div>
+      </div>
+      <div class="mode-toggle" id="stop-distance-modes" role="radiogroup" aria-label="收车里程记录方式">
+        <label><input type="radio" name="stop-distance-mode" value="odometer" checked><span>结束里程表</span></label>
+        <label><input type="radio" name="stop-distance-mode" value="trip"><span>直接填总里程</span></label>
+      </div>
+      <div class="shift-field" id="stop-odometer-field">
+        <label>
+          <span>结束里程表</span>
+          <span class="input-shell"><input id="stop-odometer" type="number" inputmode="decimal" min="0" step="0.1" placeholder="0.0"><b>km</b></span>
+        </label>
+        <p class="calculated-distance" id="calculated-shift-distance"></p>
+      </div>
+      <div class="shift-field" id="stop-trip-distance-field" hidden>
+        <label>
+          <span>本次总行驶里程</span>
+          <span class="input-shell"><input id="stop-trip-distance" type="number" inputmode="decimal" min="0" step="0.1" placeholder="0.0"><b>km</b></span>
+        </label>
+      </div>
+      <p class="form-error" id="stop-shift-error" role="alert"></p>
+      <button type="button" class="quiet-danger-button" id="cancel-active-shift">放弃本次出车记录</button>
+      <div class="sheet-actions split-actions">
+        <button type="submit" class="secondary-button" value="cancel">继续出车</button>
+        <button type="button" class="primary-button" id="confirm-stop-shift">确认收车</button>
+      </div>
+    </form>
+  </dialog>
+
+  <dialog id="shift-history-dialog" class="sheet-dialog all-records-dialog">
+    <form method="dialog" class="sheet all-records-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="section-kicker">专职模式</p><h2>出车记录</h2></div>
+        <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
+      </div>
+      <p class="sheet-description" id="shift-history-meta">暂无记录</p>
+      <div class="shift-history-list" id="shift-history-list"></div>
+    </form>
+  </dialog>
+
+  <dialog id="edit-shift-dialog" class="sheet-dialog">
+    <form method="dialog" class="sheet compact-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="section-kicker">专职明细</p><h2>编辑出车记录</h2></div>
+        <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
+      </div>
+      <input id="edit-shift-id" type="hidden">
+      <div class="edit-grid">
+        <label><span>出车时间</span><span class="shift-datetime-control"><input id="edit-shift-start-display" type="text" readonly tabindex="-1" aria-hidden="true"><input id="edit-shift-start" type="datetime-local" required aria-label="出车时间"></span></label>
+        <label><span>收车时间</span><span class="shift-datetime-control"><input id="edit-shift-end-display" type="text" readonly tabindex="-1" aria-hidden="true"><input id="edit-shift-end" type="datetime-local" required aria-label="收车时间"></span></label>
+        <label class="full"><span>总行驶里程（km）</span><input id="edit-shift-distance" type="number" inputmode="decimal" min="0" step="0.1" required></label>
+      </div>
+      <p class="shift-mode-note" id="edit-shift-summary"></p>
+      <p class="form-error" id="edit-shift-error" role="alert"></p>
+      <div class="sheet-actions split-actions">
+        <button type="button" class="danger-button" id="delete-shift">删除记录</button>
+        <button type="button" class="primary-button" id="save-shift">保存修改</button>
+      </div>
+    </form>
+  </dialog>
+
   <dialog id="export-dialog" class="sheet-dialog">
     <form method="dialog" class="sheet compact-sheet">
       <div class="sheet-handle"></div>
@@ -254,6 +378,9 @@
         <button type="button" id="export-all">
           <span><strong>导出全部记录</strong><small id="export-all-label">共 0 条</small></span><b>›</b>
         </button>
+        <button type="button" id="export-shifts">
+          <span><strong>导出专职记录</strong><small id="export-shifts-label">共 0 次</small></span><b>›</b>
+        </button>
       </div>
     </form>
   </dialog>
@@ -265,7 +392,7 @@
         <div><p class="section-kicker">CSV 文件</p><h2>导入数据</h2></div>
         <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
       </div>
-      <p class="sheet-description">选择由顺风账导出的 CSV 文件。现有记录会保留，重复记录会自动跳过。</p>
+      <p class="sheet-description">支持导入订单或专职记录 CSV。现有数据会保留，重复记录会自动跳过。</p>
       <label class="import-file-button">
         <span>选择 CSV 文件</span>
         <input id="import-file" type="file" accept=".csv,text/csv">
@@ -286,7 +413,7 @@
         <button type="button" id="settings-export"><span><strong>导出 CSV</strong><small>备份或在表格中分析</small></span><b>›</b></button>
         <button type="button" id="settings-import"><span><strong>导入 CSV</strong><small>恢复备份，自动跳过重复记录</small></span><b>›</b></button>
         <button type="button" id="settings-install"><span><strong>添加到主屏幕</strong><small>像 App 一样全屏、离线使用</small></span><b>›</b></button>
-        <button type="button" class="danger-setting" id="settings-clear"><span><strong>清空全部记录</strong><small>平台设置会保留</small></span><b>×</b></button>
+        <button type="button" class="danger-setting" id="settings-clear"><span><strong>清空全部记录</strong><small>订单和专职记录将清空，平台设置会保留</small></span><b>×</b></button>
       </div>
       <p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3m-11 0h12v10H6V10Z"/></svg>所有数据仅保存在当前设备的浏览器中。</p>
     </form>
