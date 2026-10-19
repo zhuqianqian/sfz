@@ -45,8 +45,8 @@
 
           <section class="professional-banner" id="professional-banner" aria-labelledby="professional-title">
             <button class="professional-heading" id="open-shift-history" type="button" aria-label="查看出车记录">
-              <span class="professional-status"><i id="professional-status-dot"></i><span id="professional-status-text">未出车</span></span>
-              <span class="professional-heading-title" id="professional-title">专职模式 <small>记录 ›</small></span>
+              <span class="professional-status"><i id="professional-status-dot"></i><span id="professional-status-text">当前模式</span></span>
+              <span class="professional-heading-title" id="professional-title"><span id="professional-mode-title">顺路模式</span><small>出车记录 ›</small></span>
             </button>
             <div id="professional-content"></div>
           </section>
@@ -64,8 +64,7 @@
         <section class="entry-panel" aria-labelledby="entry-title">
           <div class="section-heading">
             <div>
-              <p class="section-kicker">快速记录</p>
-              <h2 id="entry-title">这一单</h2>
+              <h2 id="entry-title">快速记一单</h2>
             </div>
             <button class="text-button" id="manage-platforms" type="button">管理平台</button>
           </div>
@@ -74,22 +73,22 @@
 
           <form id="trip-form" novalidate>
             <div class="input-row two-column">
-              <label class="amount-field">
+              <label class="amount-field compact-field">
                 <span>收入</span>
                 <span class="input-shell"><b>¥</b><input id="amount-input" name="amount" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00" autocomplete="off" required></span>
               </label>
-              <label>
+              <label class="compact-field">
                 <span>里程</span>
                 <span class="input-shell"><input id="distance-input" name="distance" type="number" inputmode="decimal" min="0" step="0.1" placeholder="0.0" autocomplete="off" required><b>km</b></span>
               </label>
             </div>
 
             <div class="passenger-row">
-              <label>
+              <label class="compact-field">
                 <span>乘客手机尾号</span>
                 <span class="input-shell passenger-input"><b>···</b><input id="passenger-input" name="passenger" type="tel" inputmode="numeric" maxlength="4" pattern="[0-9]{1,4}" placeholder="1234" autocomplete="off"></span>
               </label>
-              <label class="trip-number-field">
+              <label class="trip-number-field compact-field">
                 <span>乘客出行次数</span>
                 <span class="input-shell trip-number-input"><b>第</b><input id="passenger-count-input" name="passengerTripNumber" type="number" inputmode="numeric" min="1" step="1" placeholder="—" aria-label="乘客出行次数" disabled><b>次</b></span>
               </label>
