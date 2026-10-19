@@ -18,6 +18,7 @@
 
   const state = {
     records: [],
+    shifts: [],
     platforms: [],
     selectedPlatformId: 'dida',
     page: 'record',
@@ -27,6 +28,9 @@
   };
   let passengerTripNumberDirty = false;
   let reopenAllRecordsAfterEdit = false;
+  let reopenShiftHistoryAfterFlow = false;
+  let professionalBannerInitialized = false;
+  let professionalTransitionTimer = null;
   let trendResizeTimer = null;
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -71,10 +75,33 @@
     };
   }
 
+  function normalizeShift(shift) {
+    if (!shift) return null;
+    const start = new Date(shift.startTimestamp);
+    const end = shift.endTimestamp ? new Date(shift.endTimestamp) : null;
+    const mode = shift.distanceMode === 'trip' ? 'trip' : 'odometer';
+    const startOdometer = shift.startOdometer == null || shift.startOdometer === '' ? null : Number(shift.startOdometer);
+    const endOdometer = shift.endOdometer == null || shift.endOdometer === '' ? null : Number(shift.endOdometer);
+    const distance = shift.distance == null || shift.distance === '' ? null : Number(shift.distance);
+    if (Number.isNaN(start.getTime()) || (end && (Number.isNaN(end.getTime()) || end <= start))) return null;
+    if (mode === 'odometer' && (!Number.isFinite(startOdometer) || startOdometer < 0)) return null;
+    if (end && (!Number.isFinite(distance) || distance <= 0)) return null;
+    return {
+      id: String(shift.id || makeId('shift')),
+      startTimestamp: start.toISOString(),
+      endTimestamp: end ? end.toISOString() : null,
+      distanceMode: mode,
+      startOdometer: mode === 'odometer' ? startOdometer : null,
+      endOdometer: mode === 'odometer' && Number.isFinite(endOdometer) ? endOdometer : null,
+      distance: end ? round(distance, 1) : null
+    };
+  }
+
   function loadState() {
     try {
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
       state.records = Array.isArray(saved && saved.records) ? saved.records.map(normalizeRecord).filter(Boolean) : [];
+      state.shifts = Array.isArray(saved && saved.shifts) ? saved.shifts.map(normalizeShift).filter(Boolean) : [];
       state.platforms = Array.isArray(saved && saved.platforms) && saved.platforms.length
         ? saved.platforms.map(normalizePlatform).filter(Boolean)
         : DEFAULT_PLATFORMS.map((platform) => Object.assign({}, platform));
@@ -84,6 +111,7 @@
     } catch (error) {
       console.warn('无法读取已保存数据', error);
       state.records = [];
+      state.shifts = [];
       state.platforms = DEFAULT_PLATFORMS.map((platform) => Object.assign({}, platform));
     }
   }
@@ -91,8 +119,9 @@
   function saveState() {
     try {
       localStorage.setItem(STORAGE_KEY, JSON.stringify({
-        version: 2,
+        version: 3,
         records: state.records,
+        shifts: state.shifts,
         platforms: state.platforms,
         selectedPlatformId: state.selectedPlatformId
       }));
@@ -130,6 +159,359 @@
     $('#today-weekday').textContent = new Intl.DateTimeFormat('zh-CN', { weekday: 'long' }).format(now);
   }
 
+  function activeShift() {
+    return state.shifts.find((shift) => !shift.endTimestamp) || null;
+  }
+
+  function recordsForShift(shift, endValue) {
+    const start = new Date(shift.startTimestamp).getTime();
+    const end = new Date(endValue || shift.endTimestamp || Date.now()).getTime();
+    return state.records.filter((record) => {
+      const time = new Date(record.timestamp).getTime();
+      return time >= start && time <= end;
+    });
+  }
+
+  function shiftSummary(shift, endValue) {
+    const records = recordsForShift(shift, endValue);
+    return {
+      records: records,
+      income: sum(records, 'amount'),
+      count: records.length,
+      duration: Math.max(0, new Date(endValue || shift.endTimestamp || Date.now()).getTime() - new Date(shift.startTimestamp).getTime())
+    };
+  }
+
+  function formatDuration(milliseconds) {
+    const totalMinutes = Math.max(0, Math.floor(milliseconds / 60000));
+    if (!totalMinutes) return '< 1 分钟';
+    const hours = Math.floor(totalMinutes / 60);
+    const minutes = totalMinutes % 60;
+    if (!hours) return minutes + ' 分钟';
+    if (hours >= 24) {
+      const days = Math.floor(hours / 24);
+      const remainingHours = hours % 24;
+      return days + ' 天' + (remainingHours ? ' ' + remainingHours + ' 小时' : '') + (minutes ? ' ' + minutes + ' 分钟' : '');
+    }
+    return hours + ' 小时' + (minutes ? ' ' + minutes + ' 分钟' : '');
+  }
+
+  function formatCompactDuration(milliseconds) {
+    const totalMinutes = Math.max(0, Math.floor(milliseconds / 60000));
+    if (!totalMinutes) return '<1分钟';
+    const days = Math.floor(totalMinutes / 1440);
+    const hours = Math.floor(totalMinutes % 1440 / 60);
+    const minutes = totalMinutes % 60;
+    if (days) return days + '天' + (hours ? hours + '小时' : '');
+    if (hours) return hours + '小时' + (minutes ? minutes + '分' : '');
+    return minutes + '分钟';
+  }
+
+  function formatShiftDateTime(value, includeYear) {
+    const date = new Date(value);
+    const pad = (number) => String(number).padStart(2, '0');
+    const year = includeYear || date.getFullYear() !== new Date().getFullYear() ? date.getFullYear() + '年' : '';
+    return year + (date.getMonth() + 1) + '月' + date.getDate() + '日 ' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+  }
+
+  function shiftOverlaps(start, end, excludeId) {
+    const startTime = new Date(start).getTime();
+    const endTime = end ? new Date(end).getTime() : Infinity;
+    return state.shifts.some((shift) => {
+      if (shift.id === excludeId) return false;
+      const otherStart = new Date(shift.startTimestamp).getTime();
+      const otherEnd = shift.endTimestamp ? new Date(shift.endTimestamp).getTime() : Infinity;
+      return startTime < otherEnd && endTime > otherStart;
+    });
+  }
+
+  function renderProfessionalBanner() {
+    const shift = activeShift();
+    const banner = $('#professional-banner');
+    const summaryBanner = banner.closest('.summary-banner');
+    const nextActive = Boolean(shift);
+    const wasActive = summaryBanner.classList.contains('professional-active');
+    const shouldAnimate = professionalBannerInitialized && wasActive !== nextActive;
+    if (shouldAnimate) {
+      const action = banner.querySelector('[data-shift-action]');
+      if (action) {
+        const bannerBounds = summaryBanner.getBoundingClientRect();
+        const actionBounds = action.getBoundingClientRect();
+        const originX = (actionBounds.left + actionBounds.width / 2 - bannerBounds.left) / bannerBounds.width * 100;
+        const originY = (actionBounds.top + actionBounds.height / 2 - bannerBounds.top) / bannerBounds.height * 100;
+        summaryBanner.style.setProperty('--professional-origin-x', originX.toFixed(2) + '%');
+        summaryBanner.style.setProperty('--professional-origin-y', originY.toFixed(2) + '%');
+      }
+      summaryBanner.classList.add('professional-transitioning');
+      clearTimeout(professionalTransitionTimer);
+      professionalTransitionTimer = setTimeout(() => summaryBanner.classList.remove('professional-transitioning'), 760);
+    }
+    banner.classList.toggle('active', nextActive);
+    summaryBanner.classList.toggle('professional-active', nextActive);
+    professionalBannerInitialized = true;
+    $('#professional-status-text').textContent = shift ? '出车中' : '未出车';
+    if (!shift) {
+      $('#professional-content').innerHTML = '<div class="professional-idle"><span>按需开启</span><button type="button" class="professional-action" data-shift-action="start">出车</button></div>';
+      return;
+    }
+    const summary = shiftSummary(shift);
+    const startTime = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(shift.startTimestamp));
+    $('#professional-content').innerHTML = '<div class="professional-active-summary"><span>' + startTime + ' 出车 · ' + escapeHtml(formatDuration(summary.duration)) + '</span><strong>¥' + moneyFormatter.format(summary.income) + '<small>' + summary.count + ' 单</small></strong></div>' +
+      '<button type="button" class="professional-action stop" data-shift-action="stop">收车</button>';
+  }
+
+  function updateStartShiftMode() {
+    const mode = $('input[name="start-distance-mode"]:checked').value;
+    $('#start-odometer-field').hidden = mode !== 'odometer';
+    $('#start-mode-note').textContent = mode === 'odometer'
+      ? '收车时再填写结束读数，系统会自动计算总里程。'
+      : '出车时无需填写里程，收车时直接填写本次总行驶里程。';
+    $('#start-shift-error').textContent = '';
+  }
+
+  function openStartShiftDialog() {
+    if (activeShift()) {
+      openStopShiftDialog();
+      return;
+    }
+    $('input[name="start-distance-mode"][value="odometer"]').checked = true;
+    $('#start-odometer').value = '';
+    $('#start-shift-error').textContent = '';
+    updateStartShiftMode();
+    $('#start-shift-dialog').showModal();
+  }
+
+  function confirmStartShift() {
+    const mode = $('input[name="start-distance-mode"]:checked').value;
+    const startOdometer = mode === 'odometer' ? Number($('#start-odometer').value) : null;
+    if (mode === 'odometer' && (!Number.isFinite(startOdometer) || startOdometer < 0 || $('#start-odometer').value === '')) {
+      $('#start-shift-error').textContent = '请输入当前里程表读数。';
+      return;
+    }
+    const now = new Date();
+    if (shiftOverlaps(now, null)) {
+      $('#start-shift-error').textContent = '当前时间与已有专职记录重叠，请先检查出车记录。';
+      return;
+    }
+    const shift = {
+      id: makeId('shift'),
+      startTimestamp: now.toISOString(),
+      endTimestamp: null,
+      distanceMode: mode,
+      startOdometer: mode === 'odometer' ? round(startOdometer, 1) : null,
+      endOdometer: null,
+      distance: null
+    };
+    state.shifts.push(shift);
+    if (!saveState()) {
+      state.shifts.pop();
+      return;
+    }
+    $('#start-shift-dialog').close();
+    renderProfessionalBanner();
+    showToast('已出车，开始记录本次专职行程');
+  }
+
+  function updateStopShiftMode() {
+    const shift = activeShift();
+    if (!shift) return;
+    const mode = shift.distanceMode === 'trip' ? 'trip' : $('input[name="stop-distance-mode"]:checked').value;
+    $('#stop-odometer-field').hidden = mode !== 'odometer';
+    $('#stop-trip-distance-field').hidden = mode !== 'trip';
+    $('#stop-shift-error').textContent = '';
+    updateCalculatedShiftDistance();
+  }
+
+  function updateCalculatedShiftDistance() {
+    const shift = activeShift();
+    if (!shift || shift.distanceMode !== 'odometer') return;
+    const end = Number($('#stop-odometer').value);
+    const valid = $('#stop-odometer').value !== '' && Number.isFinite(end) && end >= shift.startOdometer;
+    $('#calculated-shift-distance').textContent = valid
+      ? '本次行驶 ' + round(end - shift.startOdometer, 1).toFixed(1) + ' km'
+      : '出车读数 ' + Number(shift.startOdometer).toFixed(1) + ' km';
+  }
+
+  function openStopShiftDialog() {
+    const shift = activeShift();
+    if (!shift) return;
+    const summary = shiftSummary(shift);
+    $('#stop-shift-duration').textContent = formatDuration(summary.duration);
+    $('#stop-shift-income').textContent = moneyFormatter.format(summary.income);
+    $('#stop-shift-count').textContent = summary.count;
+    $('#stop-shift-error').textContent = '';
+    $('#stop-odometer').value = '';
+    $('#stop-trip-distance').value = '';
+    $('#stop-distance-modes').hidden = shift.distanceMode !== 'odometer';
+    if (shift.distanceMode === 'odometer') $('input[name="stop-distance-mode"][value="odometer"]').checked = true;
+    updateStopShiftMode();
+    $('#stop-shift-dialog').showModal();
+  }
+
+  function confirmStopShift() {
+    const shift = activeShift();
+    if (!shift) return;
+    const mode = shift.distanceMode === 'trip' ? 'trip' : $('input[name="stop-distance-mode"]:checked').value;
+    let distance;
+    let endOdometer = null;
+    if (mode === 'odometer') {
+      endOdometer = Number($('#stop-odometer').value);
+      distance = endOdometer - shift.startOdometer;
+      if ($('#stop-odometer').value === '' || !Number.isFinite(endOdometer) || endOdometer < shift.startOdometer) {
+        $('#stop-shift-error').textContent = '结束里程表不能小于出车时的读数。';
+        return;
+      }
+    } else {
+      distance = Number($('#stop-trip-distance').value);
+    }
+    if (!Number.isFinite(distance) || distance <= 0) {
+      $('#stop-shift-error').textContent = '请输入大于 0 的本次总行驶里程。';
+      return;
+    }
+    const end = new Date();
+    if (shiftOverlaps(shift.startTimestamp, end, shift.id)) {
+      $('#stop-shift-error').textContent = '本次时间与已有专职记录重叠，请先检查出车记录。';
+      return;
+    }
+    const previous = Object.assign({}, shift);
+    Object.assign(shift, {
+      endTimestamp: end.toISOString(),
+      distanceMode: mode,
+      startOdometer: mode === 'odometer' ? shift.startOdometer : null,
+      endOdometer: mode === 'odometer' ? round(endOdometer, 1) : null,
+      distance: round(distance, 1)
+    });
+    if (!saveState()) {
+      Object.assign(shift, previous);
+      return;
+    }
+    $('#stop-shift-dialog').close();
+    renderProfessionalBanner();
+    if (state.page === 'stats') renderStats();
+    const summary = shiftSummary(shift);
+    showToast('已收车 · ' + formatDuration(summary.duration) + ' · ' + shift.distance.toFixed(1) + ' km');
+  }
+
+  function cancelActiveShift() {
+    const shift = activeShift();
+    if (!shift || !window.confirm('确认放弃本次出车记录？订单记录不会被删除。')) return;
+    const previous = state.shifts.slice();
+    state.shifts = state.shifts.filter((item) => item.id !== shift.id);
+    if (!saveState()) {
+      state.shifts = previous;
+      return;
+    }
+    $('#stop-shift-dialog').close();
+    renderProfessionalBanner();
+    showToast('已放弃本次出车记录');
+  }
+
+  function renderShiftHistory() {
+    const shifts = Array.from(state.shifts).sort((a, b) => new Date(b.startTimestamp) - new Date(a.startTimestamp));
+    const completed = shifts.filter((shift) => shift.endTimestamp);
+    const totalDuration = completed.reduce((total, shift) => total + shiftSummary(shift).duration, 0);
+    $('#shift-history-meta').textContent = shifts.length
+      ? completed.length + ' 次已完成' + (totalDuration ? ' · ' + formatDuration(totalDuration) : '')
+      : '暂无记录';
+    if (!shifts.length) {
+      $('#shift-history-list').innerHTML = '<div class="empty-state"><strong>还没有专职出车记录</strong><p>在首页开启“出车”，收车后会在这里生成明细。</p></div>';
+      return;
+    }
+    $('#shift-history-list').innerHTML = shifts.map((shift) => {
+      const summary = shiftSummary(shift);
+      const active = !shift.endTimestamp;
+      const date = new Intl.DateTimeFormat('zh-CN', { year: 'numeric', month: 'long', day: 'numeric', weekday: 'short' }).format(new Date(shift.startTimestamp));
+      const time = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(shift.startTimestamp));
+      const crossesDate = !active && localDateKey(shift.startTimestamp) !== localDateKey(shift.endTimestamp);
+      const endTime = active
+        ? '进行中'
+        : crossesDate
+          ? formatShiftDateTime(shift.endTimestamp)
+          : new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(shift.endTimestamp));
+      return '<button type="button" class="shift-history-item ' + (active ? 'active' : '') + '" data-shift-id="' + escapeHtml(shift.id) + '">' +
+        '<span class="shift-history-top"><strong>' + escapeHtml(date) + '</strong>' + (active ? '<em>出车中</em>' : '<b>¥' + moneyFormatter.format(summary.income) + '</b>') + '</span>' +
+        '<span class="shift-history-time">' + time + ' — ' + endTime + ' · ' + escapeHtml(formatDuration(summary.duration)) + '</span>' +
+        '<span class="shift-history-meta">' + summary.count + ' 单' + (active ? '' : ' · ' + Number(shift.distance).toFixed(1) + ' km · ¥' + moneyFormatter.format(shift.distance > 0 ? summary.income / shift.distance : 0) + '/km') + '</span></button>';
+    }).join('');
+  }
+
+  function openShiftHistory() {
+    reopenShiftHistoryAfterFlow = false;
+    renderShiftHistory();
+    $('#shift-history-dialog').showModal();
+  }
+
+  function updateEditShiftDateTimeDisplay() {
+    [['#edit-shift-start', '#edit-shift-start-display'], ['#edit-shift-end', '#edit-shift-end-display']].forEach((selectors) => {
+      const value = $(selectors[0]).value;
+      $(selectors[1]).value = value ? value.replace('T', ' ') : '请选择时间';
+    });
+  }
+
+  function openEditShiftDialog(id) {
+    const shift = state.shifts.find((item) => item.id === id && item.endTimestamp);
+    if (!shift) return;
+    const summary = shiftSummary(shift);
+    $('#edit-shift-id').value = shift.id;
+    $('#edit-shift-start').value = toDatetimeLocal(new Date(shift.startTimestamp));
+    $('#edit-shift-end').value = toDatetimeLocal(new Date(shift.endTimestamp));
+    $('#edit-shift-distance').value = shift.distance;
+    $('#edit-shift-summary').textContent = summary.count + ' 单 · 收入 ¥' + moneyFormatter.format(summary.income) + ' · ' + formatDuration(summary.duration);
+    $('#edit-shift-error').textContent = '';
+    updateEditShiftDateTimeDisplay();
+    $('#edit-shift-dialog').showModal();
+  }
+
+  function saveEditedShift() {
+    const shift = state.shifts.find((item) => item.id === $('#edit-shift-id').value);
+    if (!shift) return;
+    const originalStart = new Date(shift.startTimestamp);
+    const originalEnd = new Date(shift.endTimestamp);
+    const start = $('#edit-shift-start').value === toDatetimeLocal(originalStart) ? originalStart : new Date($('#edit-shift-start').value);
+    const end = $('#edit-shift-end').value === toDatetimeLocal(originalEnd) ? originalEnd : new Date($('#edit-shift-end').value);
+    const distance = Number($('#edit-shift-distance').value);
+    let error = '';
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) error = '请选择有效的出车和收车时间。';
+    else if (end <= start) error = '收车时间必须晚于出车时间。';
+    else if (!Number.isFinite(distance) || distance <= 0) error = '总行驶里程必须大于 0。';
+    else if (shiftOverlaps(start, end, shift.id)) error = '这段时间与另一条专职记录重叠。';
+    if (error) {
+      $('#edit-shift-error').textContent = error;
+      return;
+    }
+    const previous = Object.assign({}, shift);
+    Object.assign(shift, {
+      startTimestamp: start.toISOString(),
+      endTimestamp: end.toISOString(),
+      distance: round(distance, 1),
+      endOdometer: shift.distanceMode === 'odometer' ? round(shift.startOdometer + distance, 1) : null
+    });
+    if (!saveState()) {
+      Object.assign(shift, previous);
+      return;
+    }
+    $('#edit-shift-dialog').close();
+    renderProfessionalBanner();
+    if (state.page === 'stats') renderStats();
+    showToast('专职记录已更新');
+  }
+
+  function deleteEditedShift() {
+    const id = $('#edit-shift-id').value;
+    const shift = state.shifts.find((item) => item.id === id);
+    if (!shift || !window.confirm('确认删除这条专职记录？订单记录不会被删除。')) return;
+    const previous = state.shifts.slice();
+    state.shifts = state.shifts.filter((item) => item.id !== id);
+    if (!saveState()) {
+      state.shifts = previous;
+      return;
+    }
+    $('#edit-shift-dialog').close();
+    renderProfessionalBanner();
+    if (state.page === 'stats') renderStats();
+    showToast('专职记录已删除');
+  }
+
   function renderPlatformPicker() {
     const picker = $('#platform-picker');
     const previousScroll = picker.scrollLeft;
@@ -155,6 +537,7 @@
   function renderHome() {
     updateDateHeader();
     renderPlatformPicker();
+    renderProfessionalBanner();
     const today = localDateKey(new Date());
     const records = state.records
       .filter((record) => localDateKey(record.timestamp) === today)
@@ -507,6 +890,31 @@
     });
   }
 
+  function scopeShifts() {
+    const bounds = scopeBounds();
+    return state.shifts.filter((shift) => {
+      const start = new Date(shift.startTimestamp);
+      return Boolean(shift.endTimestamp) && start >= bounds[0] && start < bounds[1];
+    });
+  }
+
+  function renderProfessionalStats() {
+    const shifts = scopeShifts();
+    const container = $('#professional-stats');
+    container.hidden = !shifts.length;
+    if (!shifts.length) return;
+    const totals = shifts.reduce((result, shift) => {
+      const summary = shiftSummary(shift);
+      result.duration += summary.duration;
+      result.income += summary.income;
+      result.distance += Number(shift.distance || 0);
+      return result;
+    }, { duration: 0, income: 0, distance: 0 });
+    $('#scope-shift-duration').textContent = formatCompactDuration(totals.duration);
+    $('#scope-hourly-rate').textContent = moneyFormatter.format(totals.duration > 0 ? totals.income / (totals.duration / 3600000) : 0);
+    $('#scope-shift-rate').textContent = moneyFormatter.format(totals.distance > 0 ? totals.income / totals.distance : 0);
+  }
+
   function renderStats() {
     renderPeriodLabel();
     renderCalendar();
@@ -516,6 +924,7 @@
     $('#scope-income').textContent = moneyFormatter.format(income);
     $('#scope-distance').textContent = distance.toFixed(1);
     $('#scope-rate').textContent = distance > 0 ? moneyFormatter.format(income / distance) : '0.00';
+    renderProfessionalStats();
     renderTrendChart();
     renderPlatformInsights(records);
     updateExportLabels(records);
@@ -768,6 +1177,7 @@
   function updateExportLabels(records = scopeRecords()) {
     $('#export-scope-label').textContent = periodDescription() + ' · ' + records.length + ' 条';
     $('#export-all-label').textContent = '共 ' + state.records.length + ' 条';
+    $('#export-shifts-label').textContent = '共 ' + state.shifts.filter((shift) => shift.endTimestamp).length + ' 次已完成';
   }
 
   function exportCsv(records, suffix) {
@@ -802,6 +1212,47 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
     $('#export-dialog').close();
     showToast('已导出 ' + records.length + ' 条记录');
+  }
+
+  function exportShiftCsv() {
+    const shifts = state.shifts.filter((shift) => shift.endTimestamp).sort((a, b) => new Date(a.startTimestamp) - new Date(b.startTimestamp));
+    if (!shifts.length) {
+      showToast('当前没有已完成的专职记录');
+      return;
+    }
+    const header = ['出车日期', '出车时间', '收车日期', '收车时间', '记录方式', '开始里程表', '结束里程表', '总行驶里程(公里)', '专职收入(元)', '订单数', '时长(分钟)', '记录ID'];
+    const rows = shifts.map((shift) => {
+      const start = new Date(shift.startTimestamp);
+      const end = new Date(shift.endTimestamp);
+      const summary = shiftSummary(shift);
+      const timeText = (date) => String(date.getHours()).padStart(2, '0') + ':' + String(date.getMinutes()).padStart(2, '0') + ':' + String(date.getSeconds()).padStart(2, '0');
+      return [
+        localDateKey(start),
+        timeText(start),
+        localDateKey(end),
+        timeText(end),
+        shift.distanceMode === 'odometer' ? '里程表读数' : '本次总里程',
+        shift.startOdometer == null ? '' : Number(shift.startOdometer).toFixed(1),
+        shift.endOdometer == null ? '' : Number(shift.endOdometer).toFixed(1),
+        Number(shift.distance).toFixed(1),
+        summary.income.toFixed(2),
+        summary.count,
+        Math.round(summary.duration / 60000),
+        shift.id
+      ];
+    });
+    const csv = '\ufeff' + [header].concat(rows).map((row) => row.map(csvCell).join(',')).join('\r\n');
+    const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.href = url;
+    link.download = '顺风账-' + localDateKey(new Date()).replaceAll('-', '') + '-专职记录.csv';
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(url), 1000);
+    $('#export-dialog').close();
+    showToast('已导出 ' + shifts.length + ' 次专职记录');
   }
 
   function csvCell(value) {
@@ -881,6 +1332,95 @@
     return platform;
   }
 
+  function parseImportedDateTime(dateText, timeText) {
+    const validDate = /^\d{4}-\d{2}-\d{2}$/.test(dateText);
+    const validTime = /^(?:[01]\d|2[0-3]):[0-5]\d(?::[0-5]\d)?$/.test(timeText);
+    if (!validDate || !validTime) return new Date(NaN);
+    const date = new Date(dateText + 'T' + (timeText.length === 5 ? timeText + ':00' : timeText));
+    return localDateKey(date) === dateText ? date : new Date(NaN);
+  }
+
+  function importShiftCsvRows(rows, headers, status) {
+    const column = (name) => headers.indexOf(name);
+    const startDateColumn = column('出车日期');
+    const startTimeColumn = column('出车时间');
+    const endDateColumn = column('收车日期');
+    const endTimeColumn = column('收车时间');
+    const modeColumn = column('记录方式');
+    const startOdometerColumn = column('开始里程表');
+    const endOdometerColumn = column('结束里程表');
+    const distanceColumn = column('总行驶里程(公里)');
+    const recordIdColumn = column('记录ID');
+    if ([startDateColumn, startTimeColumn, endDateColumn, endTimeColumn, modeColumn, distanceColumn, recordIdColumn].some((index) => index < 0)) {
+      throw new Error('专职记录 CSV 表头不完整。');
+    }
+    const existingIds = new Set(state.shifts.map((shift) => shift.id));
+    const candidates = [];
+    let invalidCount = 0;
+    let duplicateCount = 0;
+    rows.slice(1).forEach((row) => {
+      const value = (index) => index >= 0 ? String(row[index] || '').trim() : '';
+      const sourceId = value(recordIdColumn).slice(0, 128);
+      if (sourceId && existingIds.has(sourceId)) {
+        duplicateCount += 1;
+        return;
+      }
+      const start = parseImportedDateTime(value(startDateColumn), value(startTimeColumn));
+      const end = parseImportedDateTime(value(endDateColumn), value(endTimeColumn));
+      const modeText = value(modeColumn);
+      const mode = /里程表|odometer/i.test(modeText) ? 'odometer' : /总里程|trip|直接/i.test(modeText) ? 'trip' : '';
+      const startOdometerText = value(startOdometerColumn);
+      const endOdometerText = value(endOdometerColumn);
+      const startOdometer = startOdometerText === '' ? null : Number(startOdometerText);
+      const endOdometer = endOdometerText === '' ? null : Number(endOdometerText);
+      const distance = Number(value(distanceColumn));
+      const validOdometer = mode !== 'odometer' || (Number.isFinite(startOdometer) && startOdometer >= 0 && Number.isFinite(endOdometer) && endOdometer >= startOdometer);
+      if (!sourceId || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start || !mode || !Number.isFinite(distance) || distance <= 0 || !validOdometer) {
+        invalidCount += 1;
+        return;
+      }
+      existingIds.add(sourceId);
+      candidates.push({
+        id: sourceId,
+        startTimestamp: start.toISOString(),
+        endTimestamp: end.toISOString(),
+        distanceMode: mode,
+        startOdometer: mode === 'odometer' ? round(startOdometer, 1) : null,
+        endOdometer: mode === 'odometer' ? round(endOdometer, 1) : null,
+        distance: round(distance, 1)
+      });
+    });
+    candidates.sort((a, b) => new Date(a.startTimestamp) - new Date(b.startTimestamp));
+    const imported = [];
+    candidates.forEach((candidate) => {
+      const overlaps = state.shifts.concat(imported).some((shift) => {
+        const candidateStart = new Date(candidate.startTimestamp).getTime();
+        const candidateEnd = new Date(candidate.endTimestamp).getTime();
+        const otherStart = new Date(shift.startTimestamp).getTime();
+        const otherEnd = shift.endTimestamp ? new Date(shift.endTimestamp).getTime() : Infinity;
+        return candidateStart < otherEnd && candidateEnd > otherStart;
+      });
+      if (overlaps) invalidCount += 1;
+      else imported.push(candidate);
+    });
+    if (!imported.length) {
+      const skipped = duplicateCount + invalidCount;
+      throw new Error(skipped ? '没有新增专职记录，共跳过 ' + skipped + ' 条。' : '文件中没有可导入的专职记录。');
+    }
+    const previousShifts = state.shifts.slice();
+    state.shifts = state.shifts.concat(imported);
+    if (!saveState()) {
+      state.shifts = previousShifts;
+      status.textContent = '导入失败，请检查 Safari 存储空间。';
+      return;
+    }
+    $('#import-dialog').close();
+    renderHome();
+    if (state.page === 'stats') renderStats();
+    const skipped = duplicateCount + invalidCount;
+    showToast('已导入 ' + imported.length + ' 次专职记录' + (skipped ? '，跳过 ' + skipped + ' 条' : ''));
+  }
+
   async function importCsvFile(file) {
     const status = $('#import-status');
     status.textContent = '正在读取文件…';
@@ -888,6 +1428,10 @@
       const rows = parseCsv(await file.text());
       if (rows.length < 2) throw new Error('文件中没有可导入的记录。');
       const headers = rows[0].map((value, index) => (index === 0 ? value.replace(/^\ufeff/, '') : value).trim());
+      if (headers.includes('出车日期')) {
+        importShiftCsvRows(rows, headers, status);
+        return;
+      }
       const column = (name) => headers.indexOf(name);
       const dateColumn = column('日期');
       const timeColumn = column('时间');
@@ -984,17 +1528,22 @@
   }
 
   function clearAllRecords() {
-    const count = state.records.length;
-    if (!count) {
+    const orderCount = state.records.length;
+    const shiftCount = state.shifts.length;
+    if (!orderCount && !shiftCount) {
       $('#settings-dialog').close();
       showToast('当前没有记录可清空');
       return;
     }
-    if (!window.confirm('确认清空全部 ' + count + ' 条记录？此操作无法撤销，建议先导出备份。')) return;
+    const countText = (orderCount ? orderCount + ' 条订单' : '') + (orderCount && shiftCount ? '和' : '') + (shiftCount ? shiftCount + ' 次专职记录' : '');
+    if (!window.confirm('确认清空全部' + countText + '？此操作无法撤销，建议先导出备份。')) return;
     const previousRecords = state.records;
+    const previousShifts = state.shifts;
     state.records = [];
+    state.shifts = [];
     if (!saveState()) {
       state.records = previousRecords;
+      state.shifts = previousShifts;
       return;
     }
     $('#settings-dialog').close();
@@ -1002,7 +1551,7 @@
     renderHome();
     updatePassengerTripNumberInput(true);
     if (state.page === 'stats') renderStats();
-    showToast('已清空 ' + count + ' 条记录');
+    showToast('订单和专职记录已清空');
   }
 
   function renderPeriodAndChartsAfterEdit() {
@@ -1051,6 +1600,47 @@
       renderPlatformPicker();
     });
     $('#trip-form').addEventListener('submit', submitTrip);
+    $('#professional-content').addEventListener('click', (event) => {
+      const action = event.target.closest('[data-shift-action]');
+      if (!action) return;
+      if (action.dataset.shiftAction === 'start') openStartShiftDialog();
+      else openStopShiftDialog();
+    });
+    $('#open-shift-history').addEventListener('click', openShiftHistory);
+    $('#start-distance-modes').addEventListener('change', updateStartShiftMode);
+    $('#confirm-start-shift').addEventListener('click', confirmStartShift);
+    $('#stop-distance-modes').addEventListener('change', updateStopShiftMode);
+    $('#stop-odometer').addEventListener('input', updateCalculatedShiftDistance);
+    $('#confirm-stop-shift').addEventListener('click', confirmStopShift);
+    $('#cancel-active-shift').addEventListener('click', cancelActiveShift);
+    $('#shift-history-list').addEventListener('click', (event) => {
+      const item = event.target.closest('[data-shift-id]');
+      if (!item) return;
+      const shift = state.shifts.find((candidate) => candidate.id === item.dataset.shiftId);
+      if (!shift) return;
+      reopenShiftHistoryAfterFlow = true;
+      $('#shift-history-dialog').close();
+      requestAnimationFrame(() => {
+        if (shift.endTimestamp) openEditShiftDialog(shift.id);
+        else openStopShiftDialog();
+      });
+    });
+    [$('#stop-shift-dialog'), $('#edit-shift-dialog')].forEach((dialog) => {
+      dialog.addEventListener('close', () => {
+        if (!reopenShiftHistoryAfterFlow) return;
+        reopenShiftHistoryAfterFlow = false;
+        requestAnimationFrame(() => {
+          renderShiftHistory();
+          $('#shift-history-dialog').showModal();
+        });
+      });
+    });
+    $('#edit-shift-start').addEventListener('input', updateEditShiftDateTimeDisplay);
+    $('#edit-shift-start').addEventListener('change', updateEditShiftDateTimeDisplay);
+    $('#edit-shift-end').addEventListener('input', updateEditShiftDateTimeDisplay);
+    $('#edit-shift-end').addEventListener('change', updateEditShiftDateTimeDisplay);
+    $('#save-shift').addEventListener('click', saveEditedShift);
+    $('#delete-shift').addEventListener('click', deleteEditedShift);
     $('#passenger-input').addEventListener('input', (event) => {
       event.target.value = event.target.value.replace(/\D/g, '').slice(0, 4);
       passengerTripNumberDirty = false;
@@ -1115,6 +1705,7 @@
     $('#open-export').addEventListener('click', openExportDialog);
     $('#export-scope').addEventListener('click', () => exportCsv(scopeRecords(), '当前范围'));
     $('#export-all').addEventListener('click', () => exportCsv(state.records, '全部'));
+    $('#export-shifts').addEventListener('click', exportShiftCsv);
     $('#open-settings').addEventListener('click', () => $('#settings-dialog').showModal());
     $('#settings-platforms').addEventListener('click', () => { renderPlatformManager(); chainDialog($('#settings-dialog'), $('#platform-dialog')); });
     $('#settings-export').addEventListener('click', () => { updateExportLabels(); chainDialog($('#settings-dialog'), $('#export-dialog')); });
@@ -1185,6 +1776,7 @@
       const rendered = $('#today-date').dataset.dateKey;
       const current = localDateKey(new Date());
       if (rendered && rendered !== current) renderHome();
+      else if (activeShift()) renderProfessionalBanner();
       $('#today-date').dataset.dateKey = current;
     }, 60000);
   }
