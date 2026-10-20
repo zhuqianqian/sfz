@@ -43,12 +43,18 @@
             </div>
           </div>
 
-          <section class="professional-banner" id="professional-banner" aria-labelledby="professional-title">
-            <button class="professional-heading" id="open-shift-history" type="button" aria-label="查看出车记录">
-              <span class="professional-status"><i id="professional-status-dot"></i><span id="professional-status-text">当前模式</span></span>
-              <span class="professional-heading-title" id="professional-title"><span id="professional-mode-title">顺路模式</span><small>出车记录 ›</small></span>
-            </button>
-            <div id="professional-content"></div>
+          <section class="professional-banner" id="professional-banner" aria-labelledby="professional-mode-title">
+            <div class="professional-mode-heading">
+              <strong id="professional-mode-title">顺路模式</strong>
+            </div>
+            <div class="professional-center">
+              <button class="professional-info-button" id="professional-mode-info" type="button" aria-label="出车进入专职模式" aria-expanded="false"><span class="professional-info-glyph">i</span><span class="professional-info-text">出车进入专职模式。</span></button>
+              <div class="professional-live-info" id="professional-live-info"></div>
+            </div>
+            <div class="professional-controls">
+              <button class="professional-history-button" id="open-shift-history" type="button">出车记录</button>
+              <div id="professional-content"></div>
+            </div>
           </section>
         </section>
 
@@ -210,7 +216,7 @@
         <div><p class="section-kicker">快速入口</p><h2>管理平台</h2></div>
         <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
       </div>
-      <p class="sheet-description">前五个平台会显示在记录页。用箭头调整顺序，或添加你常用的平台。</p>
+      <p class="sheet-description">前五个平台会优先显示，其余可左右滑动查看。你也可以调整顺序、删除或添加平台。</p>
       <div id="platform-manager-list" class="platform-manager-list"></div>
       <div class="add-platform">
         <label>
@@ -222,6 +228,10 @@
           <input id="new-platform-color" type="color" value="#4f7c68">
         </label>
         <button type="button" id="add-platform-button">添加</button>
+        <div class="platform-icon-field">
+          <span>图标</span>
+          <div id="new-platform-icons" class="platform-icon-options" role="radiogroup" aria-label="选择平台图标"></div>
+        </div>
       </div>
       <p class="form-error" id="platform-error" role="alert"></p>
     </form>

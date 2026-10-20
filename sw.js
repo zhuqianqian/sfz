@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shunfeng-ledger-shell-v14';
+const CACHE_NAME = 'shunfeng-ledger-shell-v15';
 const APP_SHELL = [
   './',
   './index.html',
@@ -12,7 +12,8 @@ const APP_SHELL = [
   './assets/platforms/dida.png',
   './assets/platforms/hello.png',
   './assets/platforms/didi.png',
-  './assets/platforms/amap.png'
+  './assets/platforms/amap.png',
+  './assets/platforms/xiaola.png'
 ];
 
 self.addEventListener('install', (event) => {

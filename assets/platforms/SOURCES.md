@@ -6,5 +6,6 @@
 - hello.png：哈啰，发布者 Shanghai Haluo Pratt&Whitney Technology Co., Ltd，Bundle ID com.jingyao.EasyBike
 - didi.png：滴滴，发布者 Didi Chuxing (Beijing) Network Platform Technology Co., Ltd，Bundle ID com.xiaojukeji.didi
 - amap.png：高德地图，发布者 AutoNavi Information Technology Co. Ltd.，Bundle ID com.autonavi.amap
+- xiaola.png：小拉出行司机版，发布者 四川神州行网约车服务有限公司，Bundle ID com.xiaolachuxing.driveri（获取日期：2026-10-20）
 
 各商标及图标版权归对应权利人所有。
