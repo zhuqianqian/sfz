@@ -30,6 +30,7 @@
     shifts: [],
     platforms: [],
     deletedPlatformIds: [],
+    recordPassengerInfo: true,
     selectedPlatformId: 'dida',
     page: 'record',
     range: 'day',
@@ -44,6 +45,7 @@
   let professionalInfoTimer = null;
   let trendResizeTimer = null;
   let selectedNewPlatformIcon = '';
+  let allRecordsView = 'orders';
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -97,6 +99,7 @@
     const startOdometer = shift.startOdometer == null || shift.startOdometer === '' ? null : Number(shift.startOdometer);
     const endOdometer = shift.endOdometer == null || shift.endOdometer === '' ? null : Number(shift.endOdometer);
     const distance = shift.distance == null || shift.distance === '' ? null : Number(shift.distance);
+    const manualIncome = shift.manualIncome == null || shift.manualIncome === '' ? null : Number(shift.manualIncome);
     if (Number.isNaN(start.getTime()) || (end && (Number.isNaN(end.getTime()) || end <= start))) return null;
     if (mode === 'odometer' && (!Number.isFinite(startOdometer) || startOdometer < 0)) return null;
     if (end && (!Number.isFinite(distance) || distance <= 0)) return null;
@@ -107,7 +110,8 @@
       distanceMode: mode,
       startOdometer: mode === 'odometer' ? startOdometer : null,
       endOdometer: mode === 'odometer' && Number.isFinite(endOdometer) ? endOdometer : null,
-      distance: end ? round(distance, 1) : null
+      distance: end ? round(distance, 1) : null,
+      manualIncome: Number.isFinite(manualIncome) && manualIncome >= 0 ? round(manualIncome, 2) : null
     };
   }
 
@@ -119,6 +123,7 @@
       state.deletedPlatformIds = Array.isArray(saved && saved.deletedPlatformIds)
         ? saved.deletedPlatformIds.map(String).filter((id) => DEFAULT_PLATFORMS.some((platform) => platform.id === id))
         : [];
+      state.recordPassengerInfo = !saved || saved.recordPassengerInfo !== false;
       state.platforms = Array.isArray(saved && saved.platforms) && saved.platforms.length
         ? saved.platforms.map(normalizePlatform).filter(Boolean)
         : DEFAULT_PLATFORMS.filter((platform) => !state.deletedPlatformIds.includes(platform.id)).map((platform) => Object.assign({}, platform));
@@ -135,6 +140,7 @@
       state.records = [];
       state.shifts = [];
       state.deletedPlatformIds = [];
+      state.recordPassengerInfo = true;
       state.platforms = DEFAULT_PLATFORMS.map((platform) => Object.assign({}, platform));
     }
   }
@@ -147,6 +153,7 @@
         shifts: state.shifts,
         platforms: state.platforms,
         deletedPlatformIds: state.deletedPlatformIds,
+        recordPassengerInfo: state.recordPassengerInfo,
         selectedPlatformId: state.selectedPlatformId
       }));
       return true;
@@ -198,10 +205,12 @@
 
   function shiftSummary(shift, endValue) {
     const records = recordsForShift(shift, endValue);
+    const usesManualIncome = records.length === 0 && shift.manualIncome != null && Number.isFinite(Number(shift.manualIncome));
     return {
       records: records,
-      income: sum(records, 'amount'),
+      income: usesManualIncome ? Number(shift.manualIncome) : sum(records, 'amount'),
       count: records.length,
+      usesManualIncome: usesManualIncome,
       duration: Math.max(0, new Date(endValue || shift.endTimestamp || Date.now()).getTime() - new Date(shift.startTimestamp).getTime())
     };
   }
@@ -261,6 +270,7 @@
     const shift = activeShift();
     const banner = $('#professional-banner');
     const summaryBanner = banner.closest('.summary-banner');
+    const recordButton = $('#record-button');
     const nextActive = Boolean(shift);
     const wasActive = summaryBanner.classList.contains('professional-active');
     const shouldAnimate = professionalBannerInitialized && wasActive !== nextActive;
@@ -275,11 +285,16 @@
         summaryBanner.style.setProperty('--professional-origin-y', originY.toFixed(2) + '%');
       }
       summaryBanner.classList.add('professional-transitioning');
+      recordButton.classList.add('professional-transitioning');
       clearTimeout(professionalTransitionTimer);
-      professionalTransitionTimer = setTimeout(() => summaryBanner.classList.remove('professional-transitioning'), 760);
+      professionalTransitionTimer = setTimeout(() => {
+        summaryBanner.classList.remove('professional-transitioning');
+        recordButton.classList.remove('professional-transitioning');
+      }, 760);
     }
     banner.classList.toggle('active', nextActive);
     summaryBanner.classList.toggle('professional-active', nextActive);
+    recordButton.classList.toggle('professional-active', nextActive);
     professionalBannerInitialized = true;
     $('#professional-mode-title').textContent = shift ? '专职出车中' : '顺路模式';
     if (!shift) {
@@ -335,7 +350,8 @@
       distanceMode: mode,
       startOdometer: mode === 'odometer' ? round(startOdometer, 1) : null,
       endOdometer: null,
-      distance: null
+      distance: null,
+      manualIncome: null
     };
     state.shifts.push(shift);
     if (!saveState()) {
@@ -374,6 +390,9 @@
     $('#stop-shift-duration').textContent = formatDuration(summary.duration);
     $('#stop-shift-income').textContent = moneyFormatter.format(summary.income);
     $('#stop-shift-count').textContent = summary.count;
+    $('#stop-manual-income-field').hidden = summary.count > 0;
+    $('#stop-manual-income').value = summary.count === 0 && shift.manualIncome != null ? shift.manualIncome : '';
+    updateStopManualIncomePreview();
     $('#stop-shift-error').textContent = '';
     $('#stop-odometer').value = '';
     $('#stop-trip-distance').value = '';
@@ -381,6 +400,13 @@
     if (shift.distanceMode === 'odometer') $('input[name="stop-distance-mode"][value="odometer"]').checked = true;
     updateStopShiftMode();
     $('#stop-shift-dialog').showModal();
+  }
+
+  function updateStopManualIncomePreview() {
+    if ($('#stop-manual-income-field').hidden) return;
+    const text = $('#stop-manual-income').value.trim();
+    const value = text === '' ? 0 : Number(text);
+    $('#stop-shift-income').textContent = moneyFormatter.format(Number.isFinite(value) && value >= 0 ? value : 0);
   }
 
   function confirmStopShift() {
@@ -404,6 +430,13 @@
       return;
     }
     const end = new Date();
+    const orderSummary = shiftSummary(shift, end);
+    const manualIncomeText = $('#stop-manual-income').value.trim();
+    const manualIncome = orderSummary.count === 0 && manualIncomeText !== '' ? Number(manualIncomeText) : null;
+    if (manualIncome !== null && (!Number.isFinite(manualIncome) || manualIncome < 0)) {
+      $('#stop-shift-error').textContent = '本次总收入不能小于 0。';
+      return;
+    }
     if (shiftOverlaps(shift.startTimestamp, end, shift.id)) {
       $('#stop-shift-error').textContent = '本次时间与已有专职记录重叠，请先检查出车记录。';
       return;
@@ -414,7 +447,8 @@
       distanceMode: mode,
       startOdometer: mode === 'odometer' ? shift.startOdometer : null,
       endOdometer: mode === 'odometer' ? round(endOdometer, 1) : null,
-      distance: round(distance, 1)
+      distance: round(distance, 1),
+      manualIncome: manualIncome === null ? null : round(manualIncome, 2)
     });
     if (!saveState()) {
       Object.assign(shift, previous);
@@ -466,14 +500,8 @@
       return '<button type="button" class="shift-history-item ' + (active ? 'active' : '') + '" data-shift-id="' + escapeHtml(shift.id) + '">' +
         '<span class="shift-history-top"><strong>' + escapeHtml(date) + '</strong>' + (active ? '<em>出车中</em>' : '<b>¥' + moneyFormatter.format(summary.income) + '</b>') + '</span>' +
         '<span class="shift-history-time">' + time + ' — ' + endTime + ' · ' + escapeHtml(formatDuration(summary.duration)) + '</span>' +
-        '<span class="shift-history-meta">' + summary.count + ' 单' + (active ? '' : ' · ' + Number(shift.distance).toFixed(1) + ' km · ¥' + moneyFormatter.format(shift.distance > 0 ? summary.income / shift.distance : 0) + '/km') + '</span></button>';
+        '<span class="shift-history-meta">' + summary.count + ' 单' + (summary.usesManualIncome ? ' · 手动收入' : '') + (active ? '' : ' · ' + Number(shift.distance).toFixed(1) + ' km · ¥' + moneyFormatter.format(shift.distance > 0 ? summary.income / shift.distance : 0) + '/km') + '</span></button>';
     }).join('');
-  }
-
-  function openShiftHistory() {
-    reopenShiftHistoryAfterFlow = false;
-    renderShiftHistory();
-    $('#shift-history-dialog').showModal();
   }
 
   function updateEditShiftDateTimeDisplay() {
@@ -481,6 +509,11 @@
       const value = $(selectors[0]).value;
       $(selectors[1]).value = value ? value.replace('T', ' ') : '请选择时间';
     });
+  }
+
+  function handleEditShiftDateTimeChange() {
+    updateEditShiftDateTimeDisplay();
+    updateEditShiftManualIncomeField();
   }
 
   function openEditShiftDialog(id) {
@@ -491,10 +524,20 @@
     $('#edit-shift-start').value = toDatetimeLocal(new Date(shift.startTimestamp));
     $('#edit-shift-end').value = toDatetimeLocal(new Date(shift.endTimestamp));
     $('#edit-shift-distance').value = shift.distance;
-    $('#edit-shift-summary').textContent = summary.count + ' 单 · 收入 ¥' + moneyFormatter.format(summary.income) + ' · ' + formatDuration(summary.duration);
+    $('#edit-shift-manual-income').value = shift.manualIncome == null ? '' : shift.manualIncome;
+    $('#edit-shift-manual-income-field').hidden = summary.count > 0;
+    $('#edit-shift-summary').textContent = summary.count + ' 单 · ' + (summary.usesManualIncome ? '手动收入' : '收入') + ' ¥' + moneyFormatter.format(summary.income) + ' · ' + formatDuration(summary.duration);
     $('#edit-shift-error').textContent = '';
     updateEditShiftDateTimeDisplay();
     $('#edit-shift-dialog').showModal();
+  }
+
+  function updateEditShiftManualIncomeField() {
+    const start = new Date($('#edit-shift-start').value);
+    const end = new Date($('#edit-shift-end').value);
+    if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start) return;
+    const records = recordsForShift({ startTimestamp: start.toISOString(), endTimestamp: end.toISOString() });
+    $('#edit-shift-manual-income-field').hidden = records.length > 0;
   }
 
   function saveEditedShift() {
@@ -505,10 +548,16 @@
     const start = $('#edit-shift-start').value === toDatetimeLocal(originalStart) ? originalStart : new Date($('#edit-shift-start').value);
     const end = $('#edit-shift-end').value === toDatetimeLocal(originalEnd) ? originalEnd : new Date($('#edit-shift-end').value);
     const distance = Number($('#edit-shift-distance').value);
+    const editedRecords = Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start
+      ? []
+      : recordsForShift({ startTimestamp: start.toISOString(), endTimestamp: end.toISOString() });
+    const manualIncomeText = $('#edit-shift-manual-income').value.trim();
+    const manualIncome = editedRecords.length === 0 && manualIncomeText !== '' ? Number(manualIncomeText) : null;
     let error = '';
     if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) error = '请选择有效的出车和收车时间。';
     else if (end <= start) error = '收车时间必须晚于出车时间。';
     else if (!Number.isFinite(distance) || distance <= 0) error = '总行驶里程必须大于 0。';
+    else if (manualIncome !== null && (!Number.isFinite(manualIncome) || manualIncome < 0)) error = '专职收入不能小于 0。';
     else if (shiftOverlaps(start, end, shift.id)) error = '这段时间与另一条专职记录重叠。';
     if (error) {
       $('#edit-shift-error').textContent = error;
@@ -519,7 +568,8 @@
       startTimestamp: start.toISOString(),
       endTimestamp: end.toISOString(),
       distance: round(distance, 1),
-      endOdometer: shift.distanceMode === 'odometer' ? round(shift.startOdometer + distance, 1) : null
+      endOdometer: shift.distanceMode === 'odometer' ? round(shift.startOdometer + distance, 1) : null,
+      manualIncome: manualIncome === null ? null : round(manualIncome, 2)
     });
     if (!saveState()) {
       Object.assign(shift, previous);
@@ -583,6 +633,7 @@
   function renderHome() {
     updateDateHeader();
     renderPlatformPicker();
+    renderPassengerSetting();
     renderProfessionalBanner();
     const today = localDateKey(new Date());
     const records = state.records
@@ -596,6 +647,23 @@
     $('#today-list-meta').textContent = records.length ? records.length + ' 单 · ' + distance.toFixed(1) + ' km' : '暂无记录';
     renderTripList(records);
     updatePassengerTripNumberInput();
+  }
+
+  function renderPassengerSetting() {
+    const enabled = state.recordPassengerInfo;
+    const form = $('#trip-form');
+    const passengerInput = $('#passenger-input');
+    const tripNumberInput = $('#passenger-count-input');
+    form.classList.toggle('passenger-disabled', !enabled);
+    $$('.passenger-field', form).forEach((field) => { field.hidden = !enabled; });
+    $('#settings-passenger').setAttribute('aria-pressed', String(enabled));
+    passengerInput.disabled = !enabled;
+    if (!enabled) {
+      passengerInput.value = '';
+      tripNumberInput.value = '';
+      tripNumberInput.disabled = true;
+      passengerTripNumberDirty = false;
+    }
   }
 
   function tripItemMarkup(record) {
@@ -655,6 +723,26 @@
       return '<section class="record-date-group"><div class="record-date-heading"><h3>' + recordDateLabel(group[0].timestamp) + '</h3><span>' + group.length + ' 单 · ¥' + moneyFormatter.format(sum(group, 'amount')) + '</span></div>' +
         '<div class="trip-list">' + group.map(tripItemMarkup).join('') + '</div></section>';
     }).join('');
+  }
+
+  function renderAllRecordsView(view) {
+    allRecordsView = view === 'shifts' ? 'shifts' : 'orders';
+    const showOrders = allRecordsView === 'orders';
+    $('#order-records-view').hidden = !showOrders;
+    $('#shift-records-view').hidden = showOrders;
+    $$('[data-records-view]', $('#records-tabs')).forEach((button) => {
+      const active = button.dataset.recordsView === allRecordsView;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-selected', String(active));
+      button.tabIndex = active ? 0 : -1;
+    });
+    if (showOrders) renderAllRecords();
+    else renderShiftHistory();
+  }
+
+  function openAllRecordsDialog(view) {
+    renderAllRecordsView(view || allRecordsView);
+    $('#all-records-dialog').showModal();
   }
 
   function suggestedPassengerTripNumber(passenger, excludeRecordId) {
@@ -1278,7 +1366,7 @@
       showToast('当前没有已完成的专职记录');
       return;
     }
-    const header = ['出车日期', '出车时间', '收车日期', '收车时间', '记录方式', '开始里程表', '结束里程表', '总行驶里程(公里)', '专职收入(元)', '订单数', '时长(分钟)', '记录ID'];
+    const header = ['出车日期', '出车时间', '收车日期', '收车时间', '记录方式', '开始里程表', '结束里程表', '总行驶里程(公里)', '专职收入(元)', '手动收入(元)', '订单数', '时长(分钟)', '记录ID'];
     const rows = shifts.map((shift) => {
       const start = new Date(shift.startTimestamp);
       const end = new Date(shift.endTimestamp);
@@ -1294,6 +1382,7 @@
         shift.endOdometer == null ? '' : Number(shift.endOdometer).toFixed(1),
         Number(shift.distance).toFixed(1),
         summary.income.toFixed(2),
+        shift.manualIncome == null ? '' : Number(shift.manualIncome).toFixed(2),
         summary.count,
         Math.round(summary.duration / 60000),
         shift.id
@@ -1408,6 +1497,7 @@
     const startOdometerColumn = column('开始里程表');
     const endOdometerColumn = column('结束里程表');
     const distanceColumn = column('总行驶里程(公里)');
+    const manualIncomeColumn = column('手动收入(元)');
     const recordIdColumn = column('记录ID');
     if ([startDateColumn, startTimeColumn, endDateColumn, endTimeColumn, modeColumn, distanceColumn, recordIdColumn].some((index) => index < 0)) {
       throw new Error('专职记录 CSV 表头不完整。');
@@ -1432,8 +1522,11 @@
       const startOdometer = startOdometerText === '' ? null : Number(startOdometerText);
       const endOdometer = endOdometerText === '' ? null : Number(endOdometerText);
       const distance = Number(value(distanceColumn));
+      const manualIncomeText = value(manualIncomeColumn);
+      const manualIncome = manualIncomeText === '' ? null : Number(manualIncomeText);
       const validOdometer = mode !== 'odometer' || (Number.isFinite(startOdometer) && startOdometer >= 0 && Number.isFinite(endOdometer) && endOdometer >= startOdometer);
-      if (!sourceId || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start || !mode || !Number.isFinite(distance) || distance <= 0 || !validOdometer) {
+      const validManualIncome = manualIncome === null || (Number.isFinite(manualIncome) && manualIncome >= 0);
+      if (!sourceId || Number.isNaN(start.getTime()) || Number.isNaN(end.getTime()) || end <= start || !mode || !Number.isFinite(distance) || distance <= 0 || !validOdometer || !validManualIncome) {
         invalidCount += 1;
         return;
       }
@@ -1445,7 +1538,8 @@
         distanceMode: mode,
         startOdometer: mode === 'odometer' ? round(startOdometer, 1) : null,
         endOdometer: mode === 'odometer' ? round(endOdometer, 1) : null,
-        distance: round(distance, 1)
+        distance: round(distance, 1),
+        manualIncome: manualIncome === null ? null : round(manualIncome, 2)
       });
     });
     candidates.sort((a, b) => compareText(a.startTimestamp, b.startTimestamp));
@@ -1673,11 +1767,11 @@
     document.addEventListener('click', () => {
       if ($('#professional-mode-info').classList.contains('expanded')) setProfessionalInfoExpanded(false);
     });
-    $('#open-shift-history').addEventListener('click', openShiftHistory);
     $('#start-distance-modes').addEventListener('change', updateStartShiftMode);
     $('#confirm-start-shift').addEventListener('click', confirmStartShift);
     $('#stop-distance-modes').addEventListener('change', updateStopShiftMode);
     $('#stop-odometer').addEventListener('input', updateCalculatedShiftDistance);
+    $('#stop-manual-income').addEventListener('input', updateStopManualIncomePreview);
     $('#confirm-stop-shift').addEventListener('click', confirmStopShift);
     $('#cancel-active-shift').addEventListener('click', cancelActiveShift);
     $('#shift-history-list').addEventListener('click', (event) => {
@@ -1686,7 +1780,7 @@
       const shift = state.shifts.find((candidate) => candidate.id === item.dataset.shiftId);
       if (!shift) return;
       reopenShiftHistoryAfterFlow = true;
-      $('#shift-history-dialog').close();
+      $('#all-records-dialog').close();
       requestAnimationFrame(() => {
         if (shift.endTimestamp) openEditShiftDialog(shift.id);
         else openStopShiftDialog();
@@ -1697,15 +1791,14 @@
         if (!reopenShiftHistoryAfterFlow) return;
         reopenShiftHistoryAfterFlow = false;
         requestAnimationFrame(() => {
-          renderShiftHistory();
-          $('#shift-history-dialog').showModal();
+          openAllRecordsDialog('shifts');
         });
       });
     });
-    $('#edit-shift-start').addEventListener('input', updateEditShiftDateTimeDisplay);
-    $('#edit-shift-start').addEventListener('change', updateEditShiftDateTimeDisplay);
-    $('#edit-shift-end').addEventListener('input', updateEditShiftDateTimeDisplay);
-    $('#edit-shift-end').addEventListener('change', updateEditShiftDateTimeDisplay);
+    $('#edit-shift-start').addEventListener('input', handleEditShiftDateTimeChange);
+    $('#edit-shift-start').addEventListener('change', handleEditShiftDateTimeChange);
+    $('#edit-shift-end').addEventListener('input', handleEditShiftDateTimeChange);
+    $('#edit-shift-end').addEventListener('change', handleEditShiftDateTimeChange);
     $('#save-shift').addEventListener('click', saveEditedShift);
     $('#delete-shift').addEventListener('click', deleteEditedShift);
     $('#passenger-input').addEventListener('input', (event) => {
@@ -1736,9 +1829,10 @@
         openEditDialog(item.dataset.recordId);
       }
     });
-    $('#open-all-records').addEventListener('click', () => {
-      renderAllRecords();
-      $('#all-records-dialog').showModal();
+    $('#open-all-records').addEventListener('click', () => openAllRecordsDialog());
+    $('#records-tabs').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-records-view]');
+      if (button) renderAllRecordsView(button.dataset.recordsView);
     });
     $('#all-records-list').addEventListener('click', (event) => {
       const item = event.target.closest('[data-record-id]');
@@ -1751,8 +1845,7 @@
       if (!reopenAllRecordsAfterEdit) return;
       reopenAllRecordsAfterEdit = false;
       requestAnimationFrame(() => {
-        renderAllRecords();
-        $('#all-records-dialog').showModal();
+        openAllRecordsDialog('orders');
       });
     });
     $('#save-trip').addEventListener('click', saveEditedTrip);
@@ -1781,6 +1874,12 @@
     $('#export-all').addEventListener('click', () => exportCsv(state.records, '全部'));
     $('#export-shifts').addEventListener('click', exportShiftCsv);
     $('#open-settings').addEventListener('click', () => $('#settings-dialog').showModal());
+    $('#settings-passenger').addEventListener('click', () => {
+      const previous = state.recordPassengerInfo;
+      state.recordPassengerInfo = !previous;
+      if (!saveState()) state.recordPassengerInfo = previous;
+      renderHome();
+    });
     $('#settings-platforms').addEventListener('click', () => {
       renderPlatformManager();
       renderPlatformIconOptions();
