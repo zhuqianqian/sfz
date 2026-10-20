@@ -48,11 +48,10 @@
               <strong id="professional-mode-title">顺路模式</strong>
             </div>
             <div class="professional-center">
-              <button class="professional-info-button" id="professional-mode-info" type="button" aria-label="出车进入专职模式" aria-expanded="false"><span class="professional-info-glyph">i</span><span class="professional-info-text">出车进入专职模式。</span></button>
+              <button class="professional-info-button" id="professional-mode-info" type="button" aria-label="点击出车进入专职模式" aria-expanded="false"><span class="professional-info-glyph">i</span><span class="professional-info-text">点击出车进入专职模式</span></button>
               <div class="professional-live-info" id="professional-live-info"></div>
             </div>
             <div class="professional-controls">
-              <button class="professional-history-button" id="open-shift-history" type="button">出车记录</button>
               <div id="professional-content"></div>
             </div>
           </section>
@@ -90,15 +89,15 @@
             </div>
 
             <div class="passenger-row">
-              <label class="compact-field">
+              <label class="compact-field passenger-field">
                 <span>乘客手机尾号</span>
                 <span class="input-shell passenger-input"><b>···</b><input id="passenger-input" name="passenger" type="tel" inputmode="numeric" maxlength="4" pattern="[0-9]{1,4}" placeholder="1234" autocomplete="off"></span>
               </label>
-              <label class="trip-number-field compact-field">
+              <label class="trip-number-field compact-field passenger-field">
                 <span>乘客出行次数</span>
                 <span class="input-shell trip-number-input"><b>第</b><input id="passenger-count-input" name="passengerTripNumber" type="number" inputmode="numeric" min="1" step="1" placeholder="—" aria-label="乘客出行次数" disabled><b>次</b></span>
               </label>
-              <button class="record-button" type="submit" id="record-button">
+              <button class="record-button" type="submit" id="record-button" aria-label="记一单">
                 <span>记一单</span>
                 <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 12 4 4L19 6"/></svg>
               </button>
@@ -112,7 +111,7 @@
             <h2 id="today-list-title">今日明细</h2>
             <div class="detail-heading-actions">
               <span id="today-list-meta">暂无记录</span>
-              <button class="text-button" id="open-all-records" type="button">查看全部</button>
+              <button class="text-button" id="open-all-records" type="button">全部记录</button>
             </div>
           </div>
           <div class="trip-list" id="today-list"></div>
@@ -268,8 +267,18 @@
         <div><p class="section-kicker">历史明细</p><h2>全部记录</h2></div>
         <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
       </div>
-      <p class="sheet-description" id="all-records-meta">暂无记录</p>
-      <div class="all-records-list" id="all-records-list"></div>
+      <div class="records-tabs" id="records-tabs" role="tablist" aria-label="记录类型">
+        <button type="button" class="active" role="tab" aria-selected="true" data-records-view="orders">订单记录</button>
+        <button type="button" role="tab" aria-selected="false" data-records-view="shifts">出车记录</button>
+      </div>
+      <section id="order-records-view" role="tabpanel">
+        <p class="sheet-description records-meta" id="all-records-meta">暂无记录</p>
+        <div class="all-records-list" id="all-records-list"></div>
+      </section>
+      <section id="shift-records-view" role="tabpanel" hidden>
+        <p class="sheet-description records-meta" id="shift-history-meta">暂无记录</p>
+        <div class="shift-history-list" id="shift-history-list"></div>
+      </section>
     </form>
   </dialog>
 
@@ -312,6 +321,13 @@
         <div><span>累计收入</span><strong>¥<span id="stop-shift-income">0.00</span></strong></div>
         <div><span>订单数</span><strong><span id="stop-shift-count">0</span> 单</strong></div>
       </div>
+      <div class="shift-field manual-income-field" id="stop-manual-income-field" hidden>
+        <label>
+          <span>本次总收入</span>
+          <span class="input-shell"><b>¥</b><input id="stop-manual-income" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00"></span>
+        </label>
+        <p class="shift-mode-note">未记录订单时可选填，仅用于专职统计。</p>
+      </div>
       <div class="mode-toggle" id="stop-distance-modes" role="radiogroup" aria-label="收车里程记录方式">
         <label><input type="radio" name="stop-distance-mode" value="odometer" checked><span>结束里程表</span></label>
         <label><input type="radio" name="stop-distance-mode" value="trip"><span>直接填总里程</span></label>
@@ -338,18 +354,6 @@
     </form>
   </dialog>
 
-  <dialog id="shift-history-dialog" class="sheet-dialog all-records-dialog">
-    <form method="dialog" class="sheet all-records-sheet">
-      <div class="sheet-handle"></div>
-      <div class="sheet-header">
-        <div><p class="section-kicker">专职模式</p><h2>出车记录</h2></div>
-        <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
-      </div>
-      <p class="sheet-description" id="shift-history-meta">暂无记录</p>
-      <div class="shift-history-list" id="shift-history-list"></div>
-    </form>
-  </dialog>
-
   <dialog id="edit-shift-dialog" class="sheet-dialog">
     <form method="dialog" class="sheet compact-sheet">
       <div class="sheet-handle"></div>
@@ -362,6 +366,7 @@
         <label><span>出车时间</span><span class="shift-datetime-control"><input id="edit-shift-start-display" type="text" readonly tabindex="-1" aria-hidden="true"><input id="edit-shift-start" type="datetime-local" required aria-label="出车时间"></span></label>
         <label><span>收车时间</span><span class="shift-datetime-control"><input id="edit-shift-end-display" type="text" readonly tabindex="-1" aria-hidden="true"><input id="edit-shift-end" type="datetime-local" required aria-label="收车时间"></span></label>
         <label class="full"><span>总行驶里程（km）</span><input id="edit-shift-distance" type="number" inputmode="decimal" min="0" step="0.1" required></label>
+        <label class="full" id="edit-shift-manual-income-field" hidden><span>本次专职收入（元）</span><input id="edit-shift-manual-income" type="number" inputmode="decimal" min="0" step="0.01" placeholder="0.00"></label>
       </div>
       <p class="shift-mode-note" id="edit-shift-summary"></p>
       <p class="form-error" id="edit-shift-error" role="alert"></p>
@@ -418,6 +423,7 @@
         <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
       </div>
       <div class="settings-list">
+        <button type="button" class="settings-toggle" id="settings-passenger" aria-pressed="true"><span><strong>记录乘客信息</strong><small>关闭后，快速记账仅记录收入与里程</small></span><span class="settings-switch" aria-hidden="true"></span></button>
         <button type="button" id="settings-platforms"><span><strong>平台管理</strong><small>排序、添加或隐藏平台</small></span><b>›</b></button>
         <button type="button" id="settings-export"><span><strong>导出 CSV</strong><small>备份或在表格中分析</small></span><b>›</b></button>
         <button type="button" id="settings-import"><span><strong>导入 CSV</strong><small>恢复备份，自动跳过重复记录</small></span><b>›</b></button>
