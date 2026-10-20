@@ -8,7 +8,16 @@
     { id: 'hello', name: '哈啰', short: '哈', color: '#1b72e8', icon: 'assets/platforms/hello.png', builtIn: true },
     { id: 'didi', name: '滴滴', short: '滴', color: '#f0832f', icon: 'assets/platforms/didi.png', builtIn: true },
     { id: 'amap', name: '高德', short: '高', color: '#4f65db', icon: 'assets/platforms/amap.png', builtIn: true },
+    { id: 'xiaola', name: '小拉出行', short: '小', color: '#08b9cb', icon: 'assets/platforms/xiaola.png', builtIn: true },
     { id: 'private', name: '私下交易', short: '私', color: '#337c63', builtIn: true }
+  ];
+  const PLATFORM_ICONS = [
+    { name: '无图标', path: '' },
+    { name: '嘀嗒出行', path: 'assets/platforms/dida.png' },
+    { name: '哈啰', path: 'assets/platforms/hello.png' },
+    { name: '滴滴', path: 'assets/platforms/didi.png' },
+    { name: '高德', path: 'assets/platforms/amap.png' },
+    { name: '小拉出行', path: 'assets/platforms/xiaola.png' }
   ];
 
   const moneyFormatter = new Intl.NumberFormat('zh-CN', {
@@ -20,6 +29,7 @@
     records: [],
     shifts: [],
     platforms: [],
+    deletedPlatformIds: [],
     selectedPlatformId: 'dida',
     page: 'record',
     range: 'day',
@@ -31,7 +41,9 @@
   let reopenShiftHistoryAfterFlow = false;
   let professionalBannerInitialized = false;
   let professionalTransitionTimer = null;
+  let professionalInfoTimer = null;
   let trendResizeTimer = null;
+  let selectedNewPlatformIcon = '';
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -46,12 +58,14 @@
     const name = platform.name.trim().slice(0, 8);
     if (!name) return null;
     const knownPlatform = DEFAULT_PLATFORMS.find((item) => item.id === platform.id);
+    const savedIcon = typeof platform.icon === 'string' ? platform.icon : '';
+    const validSavedIcon = PLATFORM_ICONS.some((item) => item.path === savedIcon) ? savedIcon : '';
     return {
       id: String(platform.id || makeId('platform')),
       name: name,
       short: String(platform.short || Array.from(name)[0] || '车').slice(0, 1),
       color: /^#[0-9a-f]{6}$/i.test(platform.color) ? platform.color : '#4f7c68',
-      icon: knownPlatform && knownPlatform.icon ? knownPlatform.icon : '',
+      icon: validSavedIcon || (knownPlatform && knownPlatform.icon ? knownPlatform.icon : ''),
       builtIn: Boolean(platform.builtIn)
     };
   }
@@ -102,9 +116,17 @@
       const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || 'null');
       state.records = Array.isArray(saved && saved.records) ? saved.records.map(normalizeRecord).filter(Boolean) : [];
       state.shifts = Array.isArray(saved && saved.shifts) ? saved.shifts.map(normalizeShift).filter(Boolean) : [];
+      state.deletedPlatformIds = Array.isArray(saved && saved.deletedPlatformIds)
+        ? saved.deletedPlatformIds.map(String).filter((id) => DEFAULT_PLATFORMS.some((platform) => platform.id === id))
+        : [];
       state.platforms = Array.isArray(saved && saved.platforms) && saved.platforms.length
         ? saved.platforms.map(normalizePlatform).filter(Boolean)
-        : DEFAULT_PLATFORMS.map((platform) => Object.assign({}, platform));
+        : DEFAULT_PLATFORMS.filter((platform) => !state.deletedPlatformIds.includes(platform.id)).map((platform) => Object.assign({}, platform));
+      DEFAULT_PLATFORMS.forEach((platform) => {
+        if (!state.deletedPlatformIds.includes(platform.id) && !state.platforms.some((item) => item.id === platform.id)) {
+          state.platforms.push(Object.assign({}, platform));
+        }
+      });
       state.selectedPlatformId = state.platforms.some((platform) => platform.id === (saved && saved.selectedPlatformId))
         ? saved.selectedPlatformId
         : state.platforms[0].id;
@@ -112,6 +134,7 @@
       console.warn('无法读取已保存数据', error);
       state.records = [];
       state.shifts = [];
+      state.deletedPlatformIds = [];
       state.platforms = DEFAULT_PLATFORMS.map((platform) => Object.assign({}, platform));
     }
   }
@@ -123,6 +146,7 @@
         records: state.records,
         shifts: state.shifts,
         platforms: state.platforms,
+        deletedPlatformIds: state.deletedPlatformIds,
         selectedPlatformId: state.selectedPlatformId
       }));
       return true;
@@ -225,6 +249,14 @@
     });
   }
 
+  function setProfessionalInfoExpanded(expanded) {
+    const button = $('#professional-mode-info');
+    button.classList.toggle('expanded', expanded);
+    button.setAttribute('aria-expanded', String(expanded));
+    clearTimeout(professionalInfoTimer);
+    if (expanded) professionalInfoTimer = setTimeout(() => setProfessionalInfoExpanded(false), 3200);
+  }
+
   function renderProfessionalBanner() {
     const shift = activeShift();
     const banner = $('#professional-banner');
@@ -249,16 +281,18 @@
     banner.classList.toggle('active', nextActive);
     summaryBanner.classList.toggle('professional-active', nextActive);
     professionalBannerInitialized = true;
-    $('#professional-status-text').textContent = shift ? '出车中' : '当前模式';
-    $('#professional-mode-title').textContent = shift ? '专职模式' : '顺路模式';
+    $('#professional-mode-title').textContent = shift ? '专职出车中' : '顺路模式';
     if (!shift) {
-      $('#professional-content').innerHTML = '<div class="professional-idle"><span>顺路接单</span><button type="button" class="professional-action" data-shift-action="start">出车</button></div>';
+      $('#professional-live-info').innerHTML = '';
+      $('#professional-content').innerHTML = '<button type="button" class="professional-action" data-shift-action="start">出车</button>';
       return;
     }
+    setProfessionalInfoExpanded(false);
     const summary = shiftSummary(shift);
     const startTime = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(shift.startTimestamp));
-    $('#professional-content').innerHTML = '<div class="professional-active-summary"><span>' + startTime + ' 出车 · ' + escapeHtml(formatDuration(summary.duration)) + '</span><strong>¥' + moneyFormatter.format(summary.income) + '<small>' + summary.count + ' 单</small></strong></div>' +
-      '<button type="button" class="professional-action stop" data-shift-action="stop">收车</button>';
+    $('#professional-live-info').innerHTML = '<div class="professional-live-column"><strong>' + startTime + '<small>出车</small></strong><span>' + escapeHtml(formatCompactDuration(summary.duration)) + '</span></div>' +
+      '<div class="professional-live-column"><strong>¥' + moneyFormatter.format(summary.income) + '</strong><span>' + summary.count + ' 单</span></div>';
+    $('#professional-content').innerHTML = '<button type="button" class="professional-action stop" data-shift-action="stop">收车</button>';
   }
 
   function updateStartShiftMode() {
@@ -408,7 +442,7 @@
   }
 
   function renderShiftHistory() {
-    const shifts = Array.from(state.shifts).sort((a, b) => new Date(b.startTimestamp) - new Date(a.startTimestamp));
+    const shifts = Array.from(state.shifts).sort((a, b) => compareText(b.startTimestamp, a.startTimestamp));
     const completed = shifts.filter((shift) => shift.endTimestamp);
     const totalDuration = completed.reduce((total, shift) => total + shiftSummary(shift).duration, 0);
     $('#shift-history-meta').textContent = shifts.length
@@ -553,7 +587,7 @@
     const today = localDateKey(new Date());
     const records = state.records
       .filter((record) => localDateKey(record.timestamp) === today)
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+      .sort((a, b) => compareText(b.timestamp, a.timestamp));
     const income = sum(records, 'amount');
     const distance = sum(records, 'distance');
     $('#today-income').textContent = moneyFormatter.format(income);
@@ -602,7 +636,7 @@
   }
 
   function renderAllRecords() {
-    const records = Array.from(state.records).sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+    const records = Array.from(state.records).sort((a, b) => compareText(b.timestamp, a.timestamp));
     const list = $('#all-records-list');
     $('#all-records-meta').textContent = records.length
       ? records.length + ' 单 · ¥' + moneyFormatter.format(sum(records, 'amount')) + ' · ' + sum(records, 'distance').toFixed(1) + ' km'
@@ -637,7 +671,7 @@
     const targetTime = new Date(target.timestamp).getTime();
     const previous = state.records
       .filter((record) => record.id !== target.id && record.passenger === target.passenger && new Date(record.timestamp).getTime() < targetTime)
-      .sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp))[0];
+      .sort((a, b) => compareText(b.timestamp, a.timestamp))[0];
     if (!previous || !Number.isInteger(previous.passengerTripNumber)) return 0;
     return Math.max(0, target.passengerTripNumber - previous.passengerTripNumber - 1);
   }
@@ -726,7 +760,17 @@
         '<span class="manager-name">' + escapeHtml(platform.name) + '</span>' +
         '<button type="button" class="manager-action" data-action="up" aria-label="上移 ' + escapeHtml(platform.name) + '" ' + (index === 0 ? 'disabled' : '') + '>↑</button>' +
         '<button type="button" class="manager-action" data-action="down" aria-label="下移 ' + escapeHtml(platform.name) + '" ' + (index === state.platforms.length - 1 ? 'disabled' : '') + '>↓</button>' +
-        '<button type="button" class="manager-action remove" data-action="remove" aria-label="删除 ' + escapeHtml(platform.name) + '" ' + (platform.builtIn ? 'disabled' : '') + '>×</button></div>';
+        '<button type="button" class="manager-action remove" data-action="remove" aria-label="删除 ' + escapeHtml(platform.name) + '" ' + (state.platforms.length === 1 ? 'disabled' : '') + '>×</button></div>';
+    }).join('');
+  }
+
+  function renderPlatformIconOptions() {
+    $('#new-platform-icons').innerHTML = PLATFORM_ICONS.map((icon) => {
+      const selected = icon.path === selectedNewPlatformIcon;
+      const mark = icon.path
+        ? '<img src="' + escapeHtml(icon.path) + '" alt="">'
+        : '<span aria-hidden="true">无</span>';
+      return '<button type="button" class="platform-icon-option ' + (selected ? 'selected' : '') + '" role="radio" aria-checked="' + selected + '" aria-label="' + escapeHtml(icon.name) + '" data-icon-path="' + escapeHtml(icon.path) + '">' + mark + '</button>';
     }).join('');
   }
 
@@ -745,8 +789,11 @@
       const next = state.platforms[index + 1];
       state.platforms[index + 1] = state.platforms[index];
       state.platforms[index] = next;
-    } else if (action === 'remove' && !state.platforms[index].builtIn) {
+    } else if (action === 'remove' && state.platforms.length > 1) {
       const removed = state.platforms.splice(index, 1)[0];
+      if (DEFAULT_PLATFORMS.some((platform) => platform.id === removed.id) && !state.deletedPlatformIds.includes(removed.id)) {
+        state.deletedPlatformIds.push(removed.id);
+      }
       if (state.selectedPlatformId === removed.id) state.selectedPlatformId = state.platforms[0].id;
       showToast('已移除平台“' + removed.name + '”');
     } else {
@@ -779,13 +826,15 @@
       name: name.slice(0, 8),
       short: Array.from(name)[0],
       color: $('#new-platform-color').value,
-      icon: '',
+      icon: selectedNewPlatformIcon,
       builtIn: false
     };
     state.platforms.push(platform);
     input.value = '';
+    selectedNewPlatformIcon = '';
     saveState();
     renderPlatformManager();
+    renderPlatformIconOptions();
     renderPlatformPicker();
     showToast('已添加“' + platform.name + '”');
   }
@@ -896,18 +945,16 @@
 
   function scopeRecords() {
     const bounds = scopeBounds();
-    return state.records.filter((record) => {
-      const time = new Date(record.timestamp);
-      return time >= bounds[0] && time < bounds[1];
-    });
+    const lo = bounds[0].toISOString();
+    const hi = bounds[1].toISOString();
+    return state.records.filter((record) => record.timestamp >= lo && record.timestamp < hi);
   }
 
   function scopeShifts() {
     const bounds = scopeBounds();
-    return state.shifts.filter((shift) => {
-      const start = new Date(shift.startTimestamp);
-      return Boolean(shift.endTimestamp) && start >= bounds[0] && start < bounds[1];
-    });
+    const lo = bounds[0].toISOString();
+    const hi = bounds[1].toISOString();
+    return state.shifts.filter((shift) => Boolean(shift.endTimestamp) && shift.startTimestamp >= lo && shift.startTimestamp < hi);
   }
 
   function renderProfessionalStats() {
@@ -928,16 +975,16 @@
   }
 
   function renderStats() {
-    renderPeriodLabel();
-    renderCalendar();
     const records = scopeRecords();
+    renderPeriodLabel();
+    renderCalendar(records);
     const income = sum(records, 'amount');
     const distance = sum(records, 'distance');
     $('#scope-income').textContent = moneyFormatter.format(income);
     $('#scope-distance').textContent = distance.toFixed(1);
     $('#scope-rate').textContent = distance > 0 ? moneyFormatter.format(income / distance) : '0.00';
     renderProfessionalStats();
-    renderTrendChart();
+    renderTrendChart(records);
     renderPlatformInsights(records);
     updateExportLabels(records);
   }
@@ -949,7 +996,7 @@
     else $('#period-label').textContent = sixYearStart() + '—' + (sixYearStart() + 5) + ' 年';
   }
 
-  function renderCalendar() {
+  function renderCalendar(records = scopeRecords()) {
     const panel = $('#calendar-panel');
     const now = new Date();
     if (state.range === 'day') {
@@ -957,7 +1004,7 @@
       const month = state.cursor.getMonth();
       const days = new Date(year, month + 1, 0).getDate();
       const firstDay = new Date(year, month, 1).getDay();
-      const aggregates = aggregateByKey(scopeRecords(), (record) => new Date(record.timestamp).getDate());
+      const aggregates = aggregateByKey(records, (record) => new Date(record.timestamp).getDate());
       let cells = Array.from({ length: firstDay }, () => '<div class="calendar-day empty" aria-hidden="true"></div>').join('');
       for (let day = 1; day <= days; day += 1) {
         const value = aggregates.get(day) ? aggregates.get(day).income : 0;
@@ -971,7 +1018,7 @@
     }
     if (state.range === 'month') {
       const year = state.cursor.getFullYear();
-      const aggregates = aggregateByKey(scopeRecords(), (record) => new Date(record.timestamp).getMonth());
+      const aggregates = aggregateByKey(records, (record) => new Date(record.timestamp).getMonth());
       panel.innerHTML = '<div class="period-grid">' + Array.from({ length: 12 }, (_, month) => {
         const value = aggregates.get(month) ? aggregates.get(month).income : 0;
         const current = year === now.getFullYear() && month === now.getMonth();
@@ -980,7 +1027,7 @@
       return;
     }
     const start = sixYearStart();
-    const aggregates = aggregateByKey(scopeRecords(), (record) => new Date(record.timestamp).getFullYear());
+    const aggregates = aggregateByKey(records, (record) => new Date(record.timestamp).getFullYear());
     panel.innerHTML = '<div class="period-grid year-grid">' + Array.from({ length: 6 }, (_, index) => {
       const year = start + index;
       const value = aggregates.get(year) ? aggregates.get(year).income : 0;
@@ -988,8 +1035,7 @@
     }).join('') + '</div>';
   }
 
-  function periodPoints() {
-    const records = scopeRecords();
+  function periodPoints(records = scopeRecords()) {
     if (state.range === 'day') {
       const year = state.cursor.getFullYear();
       const month = state.cursor.getMonth();
@@ -1006,8 +1052,8 @@
     return Array.from({ length: 6 }, (_, index) => Object.assign({ label: String(start + index) }, data.get(start + index) || emptyAggregate()));
   }
 
-  function renderTrendChart() {
-    const points = periodPoints();
+  function renderTrendChart(records = scopeRecords()) {
+    const points = periodPoints(records);
     const values = points.map((point) => point.income);
     const max = Math.max.apply(null, values);
     if (max <= 0) {
@@ -1197,7 +1243,7 @@
       showToast('当前没有可导出的记录');
       return;
     }
-    const sorted = Array.from(records).sort((a, b) => new Date(a.timestamp) - new Date(b.timestamp));
+    const sorted = Array.from(records).sort((a, b) => compareText(a.timestamp, b.timestamp));
     const header = ['日期', '时间', '平台', '收入(元)', '里程(公里)', '乘客手机尾号', '乘客出行次数', '记录ID'];
     const rows = sorted.map((record) => {
       const date = new Date(record.timestamp);
@@ -1227,7 +1273,7 @@
   }
 
   function exportShiftCsv() {
-    const shifts = state.shifts.filter((shift) => shift.endTimestamp).sort((a, b) => new Date(a.startTimestamp) - new Date(b.startTimestamp));
+    const shifts = state.shifts.filter((shift) => shift.endTimestamp).sort((a, b) => compareText(a.startTimestamp, b.startTimestamp));
     if (!shifts.length) {
       showToast('当前没有已完成的专职记录');
       return;
@@ -1402,7 +1448,7 @@
         distance: round(distance, 1)
       });
     });
-    candidates.sort((a, b) => new Date(a.startTimestamp) - new Date(b.startTimestamp));
+    candidates.sort((a, b) => compareText(a.startTimestamp, b.startTimestamp));
     const imported = [];
     candidates.forEach((candidate) => {
       const overlaps = state.shifts.concat(imported).some((shift) => {
@@ -1590,6 +1636,7 @@
   function openPlatformDialog() {
     $('#platform-error').textContent = '';
     renderPlatformManager();
+    renderPlatformIconOptions();
     $('#platform-dialog').showModal();
   }
 
@@ -1618,6 +1665,13 @@
       if (!action) return;
       if (action.dataset.shiftAction === 'start') openStartShiftDialog();
       else openStopShiftDialog();
+    });
+    $('#professional-mode-info').addEventListener('click', (event) => {
+      event.stopPropagation();
+      setProfessionalInfoExpanded(!$('#professional-mode-info').classList.contains('expanded'));
+    });
+    document.addEventListener('click', () => {
+      if ($('#professional-mode-info').classList.contains('expanded')) setProfessionalInfoExpanded(false);
     });
     $('#open-shift-history').addEventListener('click', openShiftHistory);
     $('#start-distance-modes').addEventListener('change', updateStartShiftMode);
@@ -1662,6 +1716,12 @@
     $('#passenger-count-input').addEventListener('input', () => { passengerTripNumberDirty = true; });
     $('#manage-platforms').addEventListener('click', openPlatformDialog);
     $('#platform-manager-list').addEventListener('click', managePlatformClick);
+    $('#new-platform-icons').addEventListener('click', (event) => {
+      const option = event.target.closest('[data-icon-path]');
+      if (!option) return;
+      selectedNewPlatformIcon = option.dataset.iconPath;
+      renderPlatformIconOptions();
+    });
     $('#add-platform-button').addEventListener('click', addPlatform);
     $('#new-platform-name').addEventListener('keydown', (event) => {
       if (event.key === 'Enter') {
@@ -1721,7 +1781,11 @@
     $('#export-all').addEventListener('click', () => exportCsv(state.records, '全部'));
     $('#export-shifts').addEventListener('click', exportShiftCsv);
     $('#open-settings').addEventListener('click', () => $('#settings-dialog').showModal());
-    $('#settings-platforms').addEventListener('click', () => { renderPlatformManager(); chainDialog($('#settings-dialog'), $('#platform-dialog')); });
+    $('#settings-platforms').addEventListener('click', () => {
+      renderPlatformManager();
+      renderPlatformIconOptions();
+      chainDialog($('#settings-dialog'), $('#platform-dialog'));
+    });
     $('#settings-export').addEventListener('click', () => { updateExportLabels(); chainDialog($('#settings-dialog'), $('#export-dialog')); });
     $('#settings-import').addEventListener('click', () => {
       $('#import-status').textContent = '';
@@ -1753,6 +1817,8 @@
 
   function sum(records, key) { return records.reduce((total, record) => total + Number(record[key] || 0), 0); }
   function round(value, digits) { const factor = Math.pow(10, digits); return Math.round((value + Number.EPSILON) * factor) / factor; }
+  // Timestamps are normalized ISO-8601 (UTC) strings, so lexicographic order matches chronological order — compare them directly instead of allocating a Date per comparison.
+  function compareText(a, b) { return a < b ? -1 : a > b ? 1 : 0; }
   function compactNumber(value) {
     if (Math.abs(value) >= 10000) return (value / 10000).toFixed(value >= 100000 ? 0 : 1) + '万';
     if (Math.abs(value) >= 1000) return (value / 1000).toFixed(value >= 10000 ? 0 : 1) + 'k';
