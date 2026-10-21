@@ -46,6 +46,7 @@
   let trendResizeTimer = null;
   let selectedNewPlatformIcon = '';
   let allRecordsView = 'orders';
+  let distanceAutoFilled = false;
 
   const $ = (selector, root = document) => root.querySelector(selector);
   const $$ = (selector, root = document) => Array.from(root.querySelectorAll(selector));
@@ -646,7 +647,7 @@
     $('#today-count').textContent = records.length;
     $('#today-list-meta').textContent = records.length ? records.length + ' 单 · ' + distance.toFixed(1) + ' km' : '暂无记录';
     renderTripList(records);
-    updatePassengerTripNumberInput();
+    updatePassengerSuggestions();
   }
 
   function renderPassengerSetting() {
@@ -659,6 +660,8 @@
     $('#settings-passenger').setAttribute('aria-pressed', String(enabled));
     passengerInput.disabled = !enabled;
     if (!enabled) {
+      if (distanceAutoFilled) $('#distance-input').value = '';
+      distanceAutoFilled = false;
       passengerInput.value = '';
       tripNumberInput.value = '';
       tripNumberInput.disabled = true;
@@ -745,26 +748,45 @@
     $('#all-records-dialog').showModal();
   }
 
-  function suggestedPassengerTripNumber(passenger, excludeRecordId) {
-    if (passenger.length !== 4) return null;
-    const recordedNumbers = state.records
-      .filter((record) => record.passenger === passenger && record.id !== excludeRecordId)
-      .map((record) => record.passengerTripNumber)
-      .filter((value) => Number.isInteger(value) && value > 0);
-    return (recordedNumbers.length ? Math.max.apply(null, recordedNumbers) : 0) + 1;
+  function scanPassengerHistory(platformId, passenger, excludeRecordId) {
+    let maxTripNumber = 0;
+    let samePlatformDistanceRecord = null;
+    let fallbackDistanceRecord = null;
+    if (passenger.length !== 4) return { maxTripNumber, distanceRecord: null };
+    state.records.forEach((record) => {
+      if (record.id === excludeRecordId || record.passenger !== passenger) return;
+      const validDistance = Number.isFinite(Number(record.distance)) && Number(record.distance) > 0;
+      if (validDistance && (!fallbackDistanceRecord || compareText(record.timestamp, fallbackDistanceRecord.timestamp) > 0)) {
+        fallbackDistanceRecord = record;
+      }
+      if (record.platformId !== platformId) return;
+      if (Number.isInteger(record.passengerTripNumber) && record.passengerTripNumber > maxTripNumber) maxTripNumber = record.passengerTripNumber;
+      if (validDistance && (!samePlatformDistanceRecord || compareText(record.timestamp, samePlatformDistanceRecord.timestamp) > 0)) {
+        samePlatformDistanceRecord = record;
+      }
+    });
+    return {
+      maxTripNumber: maxTripNumber,
+      distanceRecord: samePlatformDistanceRecord || fallbackDistanceRecord
+    };
+  }
+
+  function suggestedPassengerTripNumber(platformId, passenger, excludeRecordId, history) {
+    const summary = history || scanPassengerHistory(platformId, passenger, excludeRecordId);
+    return passenger.length === 4 ? summary.maxTripNumber + 1 : null;
   }
 
   function passengerTripGap(target) {
     if (!target.passenger || !Number.isInteger(target.passengerTripNumber)) return 0;
     const targetTime = new Date(target.timestamp).getTime();
     const previous = state.records
-      .filter((record) => record.id !== target.id && record.passenger === target.passenger && new Date(record.timestamp).getTime() < targetTime)
+      .filter((record) => record.id !== target.id && record.platformId === target.platformId && record.passenger === target.passenger && new Date(record.timestamp).getTime() < targetTime)
       .sort((a, b) => compareText(b.timestamp, a.timestamp))[0];
     if (!previous || !Number.isInteger(previous.passengerTripNumber)) return 0;
     return Math.max(0, target.passengerTripNumber - previous.passengerTripNumber - 1);
   }
 
-  function updatePassengerTripNumberInput(forceSuggestion) {
+  function updatePassengerTripNumberInput(forceSuggestion, history) {
     const passenger = $('#passenger-input').value.replace(/\D/g, '').slice(-4);
     const input = $('#passenger-count-input');
     const completePassenger = passenger.length === 4;
@@ -775,14 +797,41 @@
       return;
     }
     if (forceSuggestion || (!passengerTripNumberDirty && !input.value)) {
-      input.value = suggestedPassengerTripNumber(passenger);
+      input.value = suggestedPassengerTripNumber(state.selectedPlatformId, passenger, null, history);
     }
+  }
+
+  function updatePassengerDistanceInput(history) {
+    const passenger = $('#passenger-input').value.replace(/\D/g, '').slice(-4);
+    const input = $('#distance-input');
+    if (passenger.length !== 4) {
+      if (distanceAutoFilled) input.value = '';
+      distanceAutoFilled = false;
+      return;
+    }
+    if (input.value !== '' && !distanceAutoFilled) return;
+    const summary = history || scanPassengerHistory(state.selectedPlatformId, passenger);
+    if (summary.distanceRecord) {
+      input.value = Number(summary.distanceRecord.distance).toFixed(1);
+      distanceAutoFilled = true;
+    } else if (distanceAutoFilled) {
+      input.value = '';
+      distanceAutoFilled = false;
+    }
+  }
+
+  function updatePassengerSuggestions(forceTripSuggestion) {
+    const passenger = $('#passenger-input').value.replace(/\D/g, '').slice(-4);
+    const history = passenger.length === 4 ? scanPassengerHistory(state.selectedPlatformId, passenger) : null;
+    updatePassengerTripNumberInput(forceTripSuggestion, history);
+    updatePassengerDistanceInput(history);
   }
 
   function updateEditPassengerTripNumber(forceSuggestion) {
     const passenger = $('#edit-passenger').value.replace(/\D/g, '').slice(-4);
     const input = $('#edit-passenger-count');
     const record = state.records.find((item) => item.id === $('#edit-id').value);
+    const platformId = $('#edit-platform').value;
     const completePassenger = passenger.length === 4;
     input.disabled = !completePassenger;
     input.placeholder = '—';
@@ -791,9 +840,9 @@
       return;
     }
     if (forceSuggestion) {
-      input.value = record && passenger === record.passenger && record.passengerTripNumber
+      input.value = record && platformId === record.platformId && passenger === record.passenger && record.passengerTripNumber
         ? record.passengerTripNumber
-        : suggestedPassengerTripNumber(passenger, record && record.id);
+        : suggestedPassengerTripNumber(platformId, passenger, record && record.id);
     }
   }
 
@@ -835,6 +884,7 @@
     }
     $('#trip-form').reset();
     passengerTripNumberDirty = false;
+    distanceAutoFilled = false;
     $('#form-error').textContent = '';
     renderHome();
     showToast(passenger ? '已记录 · 尾号 ' + passenger + (passengerTripNumber ? ' 第 ' + passengerTripNumber + ' 次出行' : '') : '已记录这一单');
@@ -1669,7 +1719,7 @@
       $('#import-dialog').close();
       renderHome();
       if (state.page === 'stats') renderStats();
-      if (!passengerTripNumberDirty) updatePassengerTripNumberInput(true);
+      if (!passengerTripNumberDirty) updatePassengerSuggestions(true);
       const skipped = duplicateCount + invalidCount;
       showToast('已导入 ' + imported.length + ' 条' + (skipped ? '，跳过 ' + skipped + ' 条' : ''));
     } catch (error) {
@@ -1701,7 +1751,7 @@
     $('#settings-dialog').close();
     passengerTripNumberDirty = false;
     renderHome();
-    updatePassengerTripNumberInput(true);
+    updatePassengerSuggestions(true);
     if (state.page === 'stats') renderStats();
     showToast('订单和专职记录已清空');
   }
@@ -1748,9 +1798,14 @@
     $('#platform-picker').addEventListener('click', (event) => {
       const button = event.target.closest('[data-platform-id]');
       if (!button) return;
+      const platformChanged = state.selectedPlatformId !== button.dataset.platformId;
       state.selectedPlatformId = button.dataset.platformId;
       saveState();
       renderPlatformPicker();
+      if (platformChanged) {
+        passengerTripNumberDirty = false;
+        updatePassengerSuggestions(true);
+      }
     });
     $('#platform-picker').addEventListener('scroll', updatePlatformScrollCues, { passive: true });
     $('#trip-form').addEventListener('submit', submitTrip);
@@ -1804,8 +1859,9 @@
     $('#passenger-input').addEventListener('input', (event) => {
       event.target.value = event.target.value.replace(/\D/g, '').slice(0, 4);
       passengerTripNumberDirty = false;
-      updatePassengerTripNumberInput(true);
+      updatePassengerSuggestions(true);
     });
+    $('#distance-input').addEventListener('input', () => { distanceAutoFilled = false; });
     $('#passenger-count-input').addEventListener('input', () => { passengerTripNumberDirty = true; });
     $('#manage-platforms').addEventListener('click', openPlatformDialog);
     $('#platform-manager-list').addEventListener('click', managePlatformClick);
@@ -1854,6 +1910,7 @@
       event.target.value = event.target.value.replace(/\D/g, '').slice(0, 4);
       updateEditPassengerTripNumber(true);
     });
+    $('#edit-platform').addEventListener('change', () => updateEditPassengerTripNumber(true));
     $('#edit-datetime').addEventListener('input', updateEditDateTimeDisplay);
     $('#edit-datetime').addEventListener('change', updateEditDateTimeDisplay);
     $('.edit-datetime-control').addEventListener('click', openEditDateTimePicker);
