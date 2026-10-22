@@ -3,6 +3,7 @@
 
   const STORAGE_KEY = 'shunfeng-ledger-v1';
   const INSTALL_DISMISSED_KEY = 'shunfeng-install-tip-dismissed';
+  const APP_VERSION = '1.0.0';
   const DEFAULT_PLATFORMS = [
     { id: 'dida', name: '嘀嗒出行', short: '嘀', color: '#e85d46', icon: 'assets/platforms/dida.png', builtIn: true },
     { id: 'hello', name: '哈啰', short: '哈', color: '#1b72e8', icon: 'assets/platforms/hello.png', builtIn: true },
@@ -35,6 +36,7 @@
     page: 'record',
     range: 'day',
     cursor: new Date(),
+    trendChartType: 'line',
     trendPointIndex: null
   };
   let passengerTripNumberDirty = false;
@@ -125,6 +127,7 @@
         ? saved.deletedPlatformIds.map(String).filter((id) => DEFAULT_PLATFORMS.some((platform) => platform.id === id))
         : [];
       state.recordPassengerInfo = !saved || saved.recordPassengerInfo !== false;
+      state.trendChartType = saved && saved.trendChartType === 'bar' ? 'bar' : 'line';
       state.platforms = Array.isArray(saved && saved.platforms) && saved.platforms.length
         ? saved.platforms.map(normalizePlatform).filter(Boolean)
         : DEFAULT_PLATFORMS.filter((platform) => !state.deletedPlatformIds.includes(platform.id)).map((platform) => Object.assign({}, platform));
@@ -155,6 +158,7 @@
         platforms: state.platforms,
         deletedPlatformIds: state.deletedPlatformIds,
         recordPassengerInfo: state.recordPassengerInfo,
+        trendChartType: state.trendChartType,
         selectedPlatformId: state.selectedPlatformId
       }));
       return true;
@@ -645,7 +649,8 @@
     $('#today-income').textContent = moneyFormatter.format(income);
     $('#today-distance').textContent = distance.toFixed(1);
     $('#today-count').textContent = records.length;
-    $('#today-list-meta').textContent = records.length ? records.length + ' 单 · ' + distance.toFixed(1) + ' km' : '暂无记录';
+    $('#today-list-meta').hidden = !records.length;
+    $('#today-list-meta').textContent = records.length ? records.length + ' 单 · ' + distance.toFixed(1) + ' km' : '';
     renderTripList(records);
     updatePassengerSuggestions();
   }
@@ -1191,12 +1196,16 @@
   }
 
   function renderTrendChart(records = scopeRecords()) {
+    $$('[data-chart-type]', $('#trend-chart-types')).forEach((button) => {
+      const active = button.dataset.chartType === state.trendChartType;
+      button.classList.toggle('active', active);
+      button.setAttribute('aria-pressed', String(active));
+    });
     const points = periodPoints(records);
     const values = points.map((point) => point.income);
     const max = Math.max.apply(null, values);
     if (max <= 0) {
-      $('#trend-selection-label').textContent = '收入趋势';
-      $('#trend-selection-value').textContent = '—';
+      state.trendPointIndex = null;
       $('#trend-chart').innerHTML = '<div class="chart-empty">当前范围暂无收入数据</div>';
       return;
     }
@@ -1207,29 +1216,51 @@
     const chartWidth = width - margin.left - margin.right;
     const chartHeight = height - margin.top - margin.bottom;
     const paddedMax = max * 1.12;
-    const x = (index) => margin.left + (points.length === 1 ? chartWidth / 2 : index * chartWidth / (points.length - 1));
+    const x = state.trendChartType === 'bar'
+      ? (index) => margin.left + (index + .5) * chartWidth / points.length
+      : (index) => margin.left + (points.length === 1 ? chartWidth / 2 : index * chartWidth / (points.length - 1));
     const y = (value) => margin.top + chartHeight - (value / paddedMax) * chartHeight;
-    const line = points.map((point, index) => (index ? 'L' : 'M') + ' ' + x(index).toFixed(2) + ' ' + y(point.income).toFixed(2)).join(' ');
-    const area = line + ' L ' + x(points.length - 1).toFixed(2) + ' ' + (margin.top + chartHeight) + ' L ' + x(0).toFixed(2) + ' ' + (margin.top + chartHeight) + ' Z';
     const tickIndexes = chartTickIndexes(points.length);
     const yTicks = [0, paddedMax / 2, paddedMax];
-    const fallbackIndex = lastPositiveIndex(values);
     const selectedIndex = Number.isInteger(state.trendPointIndex) && state.trendPointIndex >= 0 && state.trendPointIndex < points.length
       ? state.trendPointIndex
-      : fallbackIndex;
+      : null;
     state.trendPointIndex = selectedIndex;
-    const selectedPoint = points[selectedIndex];
-    $('#trend-selection-label').textContent = trendPointDateLabel(selectedPoint.label);
-    $('#trend-selection-value').textContent = '¥' + moneyFormatter.format(selectedPoint.income);
-    const dots = points.map((point, index) => '<circle class="dot ' + (point.income ? '' : 'zero-dot') + '" cx="' + x(index) + '" cy="' + y(point.income) + '" r="' + (point.income ? '3.2' : '2.2') + '"><title>' + trendPointDateLabel(point.label) + '：¥' + moneyFormatter.format(point.income) + '</title></circle>').join('');
     const grids = yTicks.map((value) => '<line class="grid-line" x1="' + margin.left + '" x2="' + (width - margin.right) + '" y1="' + y(value) + '" y2="' + y(value) + '"/><text class="axis-label" x="' + (margin.left - 6) + '" y="' + (y(value) + 3) + '" text-anchor="end">' + compactIncome(value, state.range !== 'day') + '</text>').join('');
     const labels = tickIndexes.map((index) => '<text class="axis-label" x="' + x(index) + '" y="' + (height - 7) + '" text-anchor="middle">' + points[index].label + '</text>').join('');
+    let marks = '';
+    if (state.trendChartType === 'bar') {
+      const slotWidth = chartWidth / points.length;
+      const barWidth = Math.max(3, Math.min(18, slotWidth * .62));
+      marks = points.map((point, index) => {
+        const barHeight = Math.max(point.income ? 1 : 0, margin.top + chartHeight - y(point.income));
+        return '<rect class="trend-bar ' + (selectedIndex === index ? 'selected' : '') + '" x="' + (x(index) - barWidth / 2).toFixed(2) + '" y="' + y(point.income).toFixed(2) + '" width="' + barWidth.toFixed(2) + '" height="' + barHeight.toFixed(2) + '" rx="' + Math.min(3, barWidth / 2).toFixed(2) + '"><title>' + trendPointDateLabel(point.label) + '：¥' + moneyFormatter.format(point.income) + '</title></rect>';
+      }).join('');
+    } else {
+      const line = points.map((point, index) => (index ? 'L' : 'M') + ' ' + x(index).toFixed(2) + ' ' + y(point.income).toFixed(2)).join(' ');
+      const area = line + ' L ' + x(points.length - 1).toFixed(2) + ' ' + (margin.top + chartHeight) + ' L ' + x(0).toFixed(2) + ' ' + (margin.top + chartHeight) + ' Z';
+      const dots = points.map((point, index) => '<circle class="dot ' + (point.income ? '' : 'zero-dot') + '" cx="' + x(index) + '" cy="' + y(point.income) + '" r="' + (point.income ? '3.2' : '2.2') + '"><title>' + trendPointDateLabel(point.label) + '：¥' + moneyFormatter.format(point.income) + '</title></circle>').join('');
+      marks = '<path class="area" d="' + area + '"/><path class="line" d="' + line + '"/>' + dots;
+    }
+    let selection = '';
+    if (selectedIndex !== null) {
+      const selectedPoint = points[selectedIndex];
+      const selectedX = x(selectedIndex);
+      const selectedY = y(selectedPoint.income);
+      const bubbleWidth = 116;
+      const bubbleHeight = 37;
+      const bubbleX = Math.max(margin.left + 2, Math.min(width - margin.right - bubbleWidth - 2, selectedX - bubbleWidth / 2));
+      let bubbleY = selectedY - bubbleHeight - 9;
+      if (bubbleY < margin.top + 2) bubbleY = selectedY + 9;
+      bubbleY = Math.min(margin.top + chartHeight - bubbleHeight - 2, bubbleY);
+      selection = '<line class="selection-guide" x1="' + selectedX + '" x2="' + selectedX + '" y1="' + margin.top + '" y2="' + (margin.top + chartHeight) + '"/>' +
+        (state.trendChartType === 'line' ? '<circle class="selected-dot" cx="' + selectedX + '" cy="' + selectedY + '" r="5"/>' : '') +
+        '<g class="selection-bubble"><rect x="' + bubbleX + '" y="' + bubbleY + '" width="' + bubbleWidth + '" height="' + bubbleHeight + '" rx="10"/><text x="' + (bubbleX + bubbleWidth / 2) + '" y="' + (bubbleY + 14) + '" text-anchor="middle"><tspan class="selection-date">' + escapeHtml(trendPointDateLabel(selectedPoint.label)) + '</tspan><tspan class="selection-value" x="' + (bubbleX + bubbleWidth / 2) + '" dy="14">¥' + moneyFormatter.format(selectedPoint.income) + '</tspan></text></g>';
+    }
     $('#trend-chart').innerHTML = '<svg class="trend-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-labelledby="trend-svg-title trend-svg-desc">' +
       '<title id="trend-svg-title">收入趋势</title><desc id="trend-svg-desc">当前范围内最高收入为 ¥' + moneyFormatter.format(max) + '，轻触图表可查看各点金额</desc>' +
       '<defs><linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".22"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>' +
-      grids + '<path class="area" d="' + area + '"/><path class="line" d="' + line + '"/>' +
-      '<line class="selection-guide" x1="' + x(selectedIndex) + '" x2="' + x(selectedIndex) + '" y1="' + margin.top + '" y2="' + (margin.top + chartHeight) + '"/>' +
-      dots + '<circle class="selected-dot" cx="' + x(selectedIndex) + '" cy="' + y(selectedPoint.income) + '" r="5"/>' + labels +
+      grids + marks + labels + selection +
       '<rect class="trend-hit-area" x="' + margin.left + '" y="' + margin.top + '" width="' + chartWidth + '" height="' + chartHeight + '"/></svg>';
   }
 
@@ -1250,8 +1281,20 @@
     pointer.y = event.clientY;
     const svgX = pointer.matrixTransform(matrix.inverse()).x;
     const chartWidth = svg.viewBox.baseVal.width - 43 - 11;
-    const index = Math.max(0, Math.min(points.length - 1, Math.round((svgX - 43) / chartWidth * (points.length - 1))));
-    state.trendPointIndex = index;
+    const relativeX = Math.max(0, Math.min(chartWidth, svgX - 43));
+    const index = state.trendChartType === 'bar'
+      ? Math.max(0, Math.min(points.length - 1, Math.floor(relativeX / chartWidth * points.length)))
+      : Math.max(0, Math.min(points.length - 1, Math.round(relativeX / chartWidth * (points.length - 1))));
+    state.trendPointIndex = state.trendPointIndex === index ? null : index;
+    renderTrendChart();
+  }
+
+  function setTrendChartType(type) {
+    const nextType = type === 'bar' ? 'bar' : 'line';
+    if (state.trendChartType === nextType) return;
+    state.trendChartType = nextType;
+    state.trendPointIndex = null;
+    saveState();
     renderTrendChart();
   }
 
@@ -1335,11 +1378,6 @@
   function chartTickIndexes(length) {
     if (length <= 5) return Array.from({ length: length }, (_, index) => index);
     return Array.from(new Set([0, Math.round((length - 1) / 3), Math.round((length - 1) * 2 / 3), length - 1]));
-  }
-
-  function lastPositiveIndex(values) {
-    for (let index = values.length - 1; index >= 0; index -= 1) if (values[index] > 0) return index;
-    return -1;
   }
 
   function movePeriod(direction) {
@@ -1784,7 +1822,8 @@
     $('#platform-dialog').showModal();
   }
 
-  function openExportDialog() {
+  function openExportDialog(includeScope) {
+    $('#export-scope').hidden = !includeScope;
     updateExportLabels();
     $('#export-dialog').showModal();
   }
@@ -1792,6 +1831,47 @@
   function chainDialog(from, to) {
     from.close();
     requestAnimationFrame(() => to.showModal());
+  }
+
+  function compareVersions(left, right) {
+    const leftParts = String(left).split('.').map((part) => Number(part) || 0);
+    const rightParts = String(right).split('.').map((part) => Number(part) || 0);
+    const length = Math.max(leftParts.length, rightParts.length);
+    for (let index = 0; index < length; index += 1) {
+      const difference = (leftParts[index] || 0) - (rightParts[index] || 0);
+      if (difference) return difference;
+    }
+    return 0;
+  }
+
+  async function checkForUpdate() {
+    const status = $('#version-update-status');
+    const button = $('#check-update');
+    status.classList.remove('update-available');
+    status.textContent = '正在检查更新…';
+    button.disabled = true;
+    try {
+      if (!location.protocol.startsWith('http')) throw new Error('offline');
+      if ('serviceWorker' in navigator) {
+        const registration = await navigator.serviceWorker.getRegistration();
+        if (registration) await registration.update();
+      }
+      const response = await fetch('./version.json?check=' + Date.now(), { cache: 'no-store' });
+      if (!response.ok) throw new Error('version request failed');
+      const data = await response.json();
+      const latestVersion = String(data.version || '');
+      if (!/^\d+\.\d+\.\d+$/.test(latestVersion)) throw new Error('invalid version');
+      if (compareVersions(latestVersion, APP_VERSION) > 0) {
+        status.classList.add('update-available');
+        status.textContent = '发现新版本 ' + latestVersion + '，请退出后联网重新打开应用。';
+      } else {
+        status.textContent = '已是最新版本。';
+      }
+    } catch (error) {
+      status.textContent = '暂时无法检查更新，请确认网络连接后重试。';
+    } finally {
+      button.disabled = false;
+    }
   }
 
   function setupEvents() {
@@ -1919,6 +1999,10 @@
     $('#period-prev').addEventListener('click', () => movePeriod(-1));
     $('#period-next').addEventListener('click', () => movePeriod(1));
     $('#period-label').addEventListener('click', () => { state.cursor = new Date(); state.trendPointIndex = null; renderStats(); });
+    $('#trend-chart-types').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-chart-type]');
+      if (button) setTrendChartType(button.dataset.chartType);
+    });
     $('#trend-chart').addEventListener('click', selectTrendPoint);
     window.addEventListener('resize', () => {
       updatePlatformScrollCues();
@@ -1926,7 +2010,7 @@
       clearTimeout(trendResizeTimer);
       trendResizeTimer = setTimeout(renderTrendChart, 120);
     });
-    $('#open-export').addEventListener('click', openExportDialog);
+    $('#open-export').addEventListener('click', () => openExportDialog(true));
     $('#export-scope').addEventListener('click', () => exportCsv(scopeRecords(), '当前范围'));
     $('#export-all').addEventListener('click', () => exportCsv(state.records, '全部'));
     $('#export-shifts').addEventListener('click', exportShiftCsv);
@@ -1942,7 +2026,11 @@
       renderPlatformIconOptions();
       chainDialog($('#settings-dialog'), $('#platform-dialog'));
     });
-    $('#settings-export').addEventListener('click', () => { updateExportLabels(); chainDialog($('#settings-dialog'), $('#export-dialog')); });
+    $('#settings-export').addEventListener('click', () => {
+      $('#export-scope').hidden = true;
+      updateExportLabels();
+      chainDialog($('#settings-dialog'), $('#export-dialog'));
+    });
     $('#settings-import').addEventListener('click', () => {
       $('#import-status').textContent = '';
       chainDialog($('#settings-dialog'), $('#import-dialog'));
@@ -1952,6 +2040,11 @@
       if (file) importCsvFile(file);
     });
     $('#settings-install').addEventListener('click', () => chainDialog($('#settings-dialog'), $('#install-dialog')));
+    $('#settings-about').addEventListener('click', () => {
+      chainDialog($('#settings-dialog'), $('#about-dialog'));
+      checkForUpdate();
+    });
+    $('#check-update').addEventListener('click', checkForUpdate);
     $('#settings-clear').addEventListener('click', clearAllRecords);
     $('#dismiss-install').addEventListener('click', () => {
       $('#install-tip').hidden = true;
