@@ -110,7 +110,7 @@
           <div class="section-heading compact">
             <h2 id="today-list-title">今日明细</h2>
             <div class="detail-heading-actions">
-              <span id="today-list-meta">暂无记录</span>
+              <span id="today-list-meta" hidden></span>
               <button class="text-button" id="open-all-records" type="button">全部记录</button>
             </div>
           </div>
@@ -176,9 +176,9 @@
         </section>
 
         <section class="chart-section trend-section" aria-label="收入趋势">
-          <div class="trend-readout" aria-live="polite">
-            <span id="trend-selection-label">收入趋势</span>
-            <strong id="trend-selection-value">—</strong>
+          <div class="chart-type-toggle" id="trend-chart-types" role="group" aria-label="收入趋势图表样式">
+            <button type="button" class="active" data-chart-type="line" aria-pressed="true">曲线</button>
+            <button type="button" data-chart-type="bar" aria-pressed="false">柱状</button>
           </div>
           <div class="chart-wrap" id="trend-chart"></div>
         </section>
@@ -428,9 +428,33 @@
         <button type="button" id="settings-export"><span><strong>导出 CSV</strong><small>备份或在表格中分析</small></span><b>›</b></button>
         <button type="button" id="settings-import"><span><strong>导入 CSV</strong><small>恢复备份，自动跳过重复记录</small></span><b>›</b></button>
         <button type="button" id="settings-install"><span><strong>添加到主屏幕</strong><small>像 App 一样全屏、离线使用</small></span><b>›</b></button>
+        <button type="button" id="settings-about"><span><strong>版本与支持</strong><small>1.0.0 · 检查更新与支持作者</small></span><b>›</b></button>
         <button type="button" class="danger-setting" id="settings-clear"><span><strong>清空全部记录</strong><small>订单和专职记录将清空，平台设置会保留</small></span><b>×</b></button>
       </div>
       <p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3m-11 0h12v10H6V10Z"/></svg>所有数据仅保存在当前设备的浏览器中。</p>
+    </form>
+  </dialog>
+
+  <dialog id="about-dialog" class="sheet-dialog">
+    <form method="dialog" class="sheet compact-sheet">
+      <div class="sheet-handle"></div>
+      <div class="sheet-header">
+        <div><p class="section-kicker">顺风账</p><h2>版本与支持</h2></div>
+        <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
+      </div>
+      <section class="version-card" aria-label="版本信息">
+        <div><span>当前版本</span><strong>1.0.0</strong></div>
+        <button type="button" id="check-update">检查更新</button>
+        <p id="version-update-status" role="status">打开此页面时会自动检查更新。</p>
+      </section>
+      <section class="support-section" aria-labelledby="support-title">
+        <div class="support-heading"><h3 id="support-title">支持作者</h3><p>如果顺风账对你有帮助，可以自愿请作者喝杯咖啡。</p></div>
+        <div class="support-codes">
+          <figure><img src="assets/wx.png" alt="微信收款码"><figcaption>微信</figcaption></figure>
+          <figure><img src="assets/zfb.png" alt="支付宝收款码"><figcaption>支付宝</figcaption></figure>
+        </div>
+        <p class="support-note">支持完全自愿，不影响任何功能使用。</p>
+      </section>
     </form>
   </dialog>
 
