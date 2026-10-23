@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'shunfeng-ledger-v1';
   const INSTALL_DISMISSED_KEY = 'shunfeng-install-tip-dismissed';
-  const APP_VERSION = '1.0.0';
+  const APP_VERSION = '1.0.1';
   const DEFAULT_PLATFORMS = [
     { id: 'dida', name: '嘀嗒出行', short: '嘀', color: '#e85d46', icon: 'assets/platforms/dida.png', builtIn: true },
     { id: 'hello', name: '哈啰', short: '哈', color: '#1b72e8', icon: 'assets/platforms/hello.png', builtIn: true },
