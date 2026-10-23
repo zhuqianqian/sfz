@@ -11,6 +11,8 @@
   --accent-soft: #dce9e3;
   --warm: #e39a4a;
   --danger: #b84a43;
+  --field-bg: #fff;
+  --field-disabled: #ebe8e1;
   --shadow: 0 18px 60px rgba(23, 35, 33, .12);
   --radius-xl: 26px;
   --radius-lg: 20px;
@@ -432,12 +434,12 @@ label > span:first-child em { font-style: normal; font-weight: 400; }
   padding: 0 14px;
   border: 1px solid var(--line);
   border-radius: var(--radius-md);
-  background: var(--bg);
+  background: var(--field-bg);
   transition: border-color .15s, box-shadow .15s, background .15s;
 }
 .input-shell:focus-within {
   border-color: var(--accent);
-  background: var(--surface);
+  background: var(--field-bg);
   box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 10%, transparent);
 }
 .compact-field { position: relative; display: block; min-width: 0; }
@@ -484,15 +486,15 @@ label > span:first-child em { font-style: normal; font-weight: 400; }
 .trip-number-input {
   gap: 4px;
   padding: 0 9px;
-  border-color: transparent;
-  background: var(--accent-soft);
+  background: var(--field-bg);
 }
 .trip-number-input input {
   text-align: center;
   font-size: 17px;
-  color: var(--accent);
+  color: var(--ink);
 }
-.trip-number-input input:disabled { opacity: .45; }
+.trip-number-input.is-disabled { border-color: transparent; background: var(--field-disabled); box-shadow: none; }
+.trip-number-input.is-disabled input, .trip-number-input.is-disabled b { color: var(--muted); opacity: .45; }
 .trip-gap { margin-left: 6px; color: var(--warm); font-style: normal; font-weight: 600; }
 .record-button {
   position: relative;
@@ -847,6 +849,8 @@ dialog { color: var(--ink); }
 }
 .compact-sheet { padding-bottom: calc(32px + var(--safe-bottom)); }
 .all-records-dialog, .all-records-dialog .sheet { max-height: 94dvh; }
+.all-records-sheet { background: var(--bg); }
+.all-records-sheet .sheet-header .icon-button { background: var(--surface); }
 .records-tabs {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
@@ -869,7 +873,7 @@ dialog { color: var(--ink); }
 }
 .record-date-heading h3 { margin: 0; font-size: 14px; }
 .record-date-heading span { color: var(--muted); font-size: 11px; }
-.record-date-group .trip-list { gap: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line) 78%, transparent); border-radius: 17px; background: var(--surface); }
+.record-date-group .trip-list { gap: 0; overflow: hidden; border: 1px solid color-mix(in srgb, var(--line) 72%, transparent); border-radius: 17px; background: var(--surface); box-shadow: 0 8px 24px rgba(23, 35, 33, .045); }
 .record-date-group .trip-item { position: relative; padding: 11px 13px; border: 0; border-radius: 0; background: transparent; }
 .record-date-group .trip-item + .trip-item::before { position: absolute; top: 0; right: 13px; left: 68px; height: 1px; background: color-mix(in srgb, var(--line) 78%, transparent); content: ""; }
 .sheet-handle { width: 38px; height: 5px; margin: 0 auto 16px; border-radius: 99px; background: var(--line); }
@@ -1133,6 +1137,8 @@ dialog { color: var(--ink); }
     --accent-soft: #1c3831;
     --warm: #e4a15b;
     --danger: #ef8279;
+    --field-bg: #1c2b28;
+    --field-disabled: #172421;
   }
   body { background: var(--bg); }
   .summary-banner { background: radial-gradient(circle at 90% -10%, rgba(229, 164, 90, .33), transparent 42%), linear-gradient(140deg, #123d33, #17503f); }

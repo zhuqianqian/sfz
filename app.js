@@ -680,13 +680,11 @@
     const tripNumberText = Number.isInteger(record.passengerTripNumber)
       ? ' · 第 ' + record.passengerTripNumber + ' 次出行' + (gap ? '<em class="trip-gap">中间 ' + gap + ' 次未同行</em>' : '')
       : '';
-    const passengerText = record.passenger
-      ? '乘客 ···' + record.passenger + tripNumberText
-      : '未记录乘客';
+    const passengerText = record.passenger ? '乘客 ' + record.passenger + tripNumberText : '';
     const time = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(record.timestamp));
     return '<button class="trip-item" type="button" data-record-id="' + escapeHtml(record.id) + '" aria-label="编辑 ' + escapeHtml(platform.name) + ' ' + record.amount.toFixed(2) + ' 元的记录">' +
       '<span class="trip-platform-icon ' + (platform.icon ? 'has-icon' : '') + '" style="--platform-color:' + platform.color + '">' + platformMark(platform) + '</span>' +
-      '<span class="trip-main"><strong>' + escapeHtml(platform.name) + ' · ' + time + '</strong><span>' + passengerText + '</span></span>' +
+      '<span class="trip-main"><strong>' + escapeHtml(platform.name) + ' · ' + time + '</strong>' + (passengerText ? '<span>' + passengerText + '</span>' : '') + '</span>' +
       '<span class="trip-values"><strong>¥' + moneyFormatter.format(record.amount) + '</strong><span>' + record.distance.toFixed(1) + ' km</span></span></button>';
   }
 
@@ -796,6 +794,7 @@
     const input = $('#passenger-count-input');
     const completePassenger = passenger.length === 4;
     input.disabled = !completePassenger;
+    input.closest('.trip-number-input').classList.toggle('is-disabled', !completePassenger);
     input.placeholder = '—';
     if (!completePassenger) {
       input.value = '';
