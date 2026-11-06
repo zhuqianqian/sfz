@@ -7,13 +7,13 @@
   <meta name="theme-color" content="#0d1716" media="(prefers-color-scheme: dark)">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-  <meta name="apple-mobile-web-app-title" content="顺风账">
+  <meta name="apple-mobile-web-app-title" content="一路顺风">
   <meta name="description" content="本地保存的顺风车收入与里程记录工具">
   <link rel="manifest" href="manifest.webmanifest">
   <link rel="apple-touch-icon" href="assets/icon-180.png">
   <link rel="icon" href="assets/icon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="styles.css">
-  <title>顺风账</title>
+  <title>一路顺风</title>
 </head>
 <body>
   <div class="app-shell">
@@ -198,7 +198,7 @@
 
     <nav class="bottom-nav" aria-label="主导航">
       <button type="button" id="record-tab" data-page="record" class="active" aria-current="page">
-        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 20h16M6 17V7a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v10M9 9h6M12 6v6M9 17v-3h6v3"/></svg>
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 17h14l-1.2-5.1a2 2 0 0 0-1.9-1.5H8.1a2 2 0 0 0-1.9 1.5L5 17Z"/><path d="M5 17v2M19 17v2M3.5 17h17M7 14h.01M17 14h.01"/></svg>
         <span>记一单</span>
       </button>
       <button type="button" id="stats-tab" data-page="stats">
@@ -419,7 +419,7 @@
     <form method="dialog" class="sheet compact-sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
-        <div><p class="section-kicker">顺风账</p><h2>设置</h2></div>
+        <div><p class="section-kicker">一路顺风</p><h2>设置</h2></div>
         <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
       </div>
       <div class="settings-list">
@@ -428,7 +428,7 @@
         <button type="button" id="settings-export"><span><strong>导出 CSV</strong><small>备份或在表格中分析</small></span><b>›</b></button>
         <button type="button" id="settings-import"><span><strong>导入 CSV</strong><small>恢复备份，自动跳过重复记录</small></span><b>›</b></button>
         <button type="button" id="settings-install"><span><strong>添加到主屏幕</strong><small>像 App 一样全屏、离线使用</small></span><b>›</b></button>
-        <button type="button" id="settings-about"><span><strong>版本与支持</strong><small>1.0.1 · 检查更新与支持作者</small></span><b>›</b></button>
+        <button type="button" id="settings-about"><span><strong>版本与支持</strong><small>1.0.3 · 检查更新与支持作者</small></span><b>›</b></button>
         <button type="button" class="danger-setting" id="settings-clear"><span><strong>清空全部记录</strong><small>订单和专职记录将清空，平台设置会保留</small></span><b>×</b></button>
       </div>
       <p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3m-11 0h12v10H6V10Z"/></svg>所有数据仅保存在当前设备的浏览器中。</p>
@@ -439,16 +439,16 @@
     <form method="dialog" class="sheet compact-sheet">
       <div class="sheet-handle"></div>
       <div class="sheet-header">
-        <div><p class="section-kicker">顺风账</p><h2>版本与支持</h2></div>
+        <div><p class="section-kicker">一路顺风</p><h2>版本与支持</h2></div>
         <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
       </div>
       <section class="version-card" aria-label="版本信息">
-        <div><span>当前版本</span><strong>1.0.1</strong></div>
+        <div><span>当前版本</span><strong>1.0.3</strong></div>
         <button type="button" id="check-update">检查更新</button>
         <p id="version-update-status" role="status">打开此页面时会自动检查更新。</p>
       </section>
       <section class="support-section" aria-labelledby="support-title">
-        <div class="support-heading"><h3 id="support-title">支持作者</h3><p>如果顺风账对你有帮助，可以自愿请作者喝杯咖啡。</p></div>
+        <div class="support-heading"><h3 id="support-title">支持作者</h3><p>如果一路顺风对你有帮助，可以自愿请作者喝杯咖啡。</p></div>
         <div class="support-codes">
           <figure><img src="assets/wx.png" alt="微信收款码"><figcaption>微信</figcaption></figure>
           <figure><img src="assets/zfb.png" alt="支付宝收款码"><figcaption>支付宝</figcaption></figure>

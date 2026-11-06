@@ -1,6 +1,6 @@
 # 平台图标来源
 
-以下图标来自各平台在中国区 Apple App Store 发布的官方应用图标，获取日期为 2026-10-16，仅用于在“顺风账”中识别对应平台。
+以下图标来自各平台在中国区 Apple App Store 发布的官方应用图标，获取日期为 2026-10-16，仅用于在“一路顺风”中识别对应平台。
 
 - dida.png：嘀嗒出行，发布者 Beijing Changxing Technology Co. LTD，Bundle ID com.didapinche.taxi
 - hello.png：哈啰，发布者 Shanghai Haluo Pratt&Whitney Technology Co., Ltd，Bundle ID com.jingyao.EasyBike
