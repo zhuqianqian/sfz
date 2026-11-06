@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'shunfeng-ledger-v1';
   const INSTALL_DISMISSED_KEY = 'shunfeng-install-tip-dismissed';
-  const APP_VERSION = '1.0.1';
+  const APP_VERSION = '1.0.2';
   const DEFAULT_PLATFORMS = [
     { id: 'dida', name: '嘀嗒出行', short: '嘀', color: '#e85d46', icon: 'assets/platforms/dida.png', builtIn: true },
     { id: 'hello', name: '哈啰', short: '哈', color: '#1b72e8', icon: 'assets/platforms/hello.png', builtIn: true },
@@ -672,15 +672,16 @@
       tripNumberInput.disabled = true;
       passengerTripNumberDirty = false;
     }
+    updatePassengerCountStepper(tripNumberInput);
   }
 
-  function tripItemMarkup(record) {
+  function tripItemMarkup(record, includePassengerInfo = true) {
     const platform = platformFor(record);
     const gap = passengerTripGap(record);
-    const tripNumberText = Number.isInteger(record.passengerTripNumber)
+    const tripNumberText = includePassengerInfo && Number.isInteger(record.passengerTripNumber)
       ? ' · 第 ' + record.passengerTripNumber + ' 次出行' + (gap ? '<em class="trip-gap">中间 ' + gap + ' 次未同行</em>' : '')
       : '';
-    const passengerText = record.passenger ? '乘客 ' + record.passenger + tripNumberText : '';
+    const passengerText = includePassengerInfo && record.passenger ? '乘客 ' + record.passenger + tripNumberText : '';
     const time = new Intl.DateTimeFormat('zh-CN', { hour: '2-digit', minute: '2-digit', hour12: false }).format(new Date(record.timestamp));
     return '<button class="trip-item" type="button" data-record-id="' + escapeHtml(record.id) + '" aria-label="编辑 ' + escapeHtml(platform.name) + ' ' + record.amount.toFixed(2) + ' 元的记录">' +
       '<span class="trip-platform-icon ' + (platform.icon ? 'has-icon' : '') + '" style="--platform-color:' + platform.color + '">' + platformMark(platform) + '</span>' +
@@ -694,7 +695,7 @@
       list.innerHTML = '<div class="empty-state"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 17h16M6 17V9l2-4h8l2 4v8M8 12h.01M16 12h.01M7 17v2M17 17v2"/></svg><strong>今天还没有记录</strong><p>录入这一单的收入和里程，轻轻一点就完成。</p></div>';
       return;
     }
-    list.innerHTML = records.map(tripItemMarkup).join('');
+    list.innerHTML = records.map((record) => tripItemMarkup(record, state.recordPassengerInfo)).join('');
   }
 
   function recordDateLabel(timestamp) {
@@ -727,7 +728,7 @@
     });
     list.innerHTML = Array.from(groups.values()).map((group) => {
       return '<section class="record-date-group"><div class="record-date-heading"><h3>' + recordDateLabel(group[0].timestamp) + '</h3><span>' + group.length + ' 单 · ¥' + moneyFormatter.format(sum(group, 'amount')) + '</span></div>' +
-        '<div class="trip-list">' + group.map(tripItemMarkup).join('') + '</div></section>';
+        '<div class="trip-list">' + group.map((record) => tripItemMarkup(record, state.recordPassengerInfo)).join('') + '</div></section>';
     }).join('');
   }
 
@@ -779,6 +780,28 @@
     return passenger.length === 4 ? summary.maxTripNumber + 1 : null;
   }
 
+  function updatePassengerCountStepper(input) {
+    const stepper = input.closest('.number-stepper');
+    const decrease = $('[data-count-step="-1"]', stepper);
+    const increase = $('[data-count-step="1"]', stepper);
+    const value = Number(input.value);
+    decrease.disabled = input.disabled || !Number.isInteger(value) || value <= 1;
+    increase.disabled = input.disabled;
+    stepper.classList.toggle('is-disabled', input.disabled);
+  }
+
+  function stepPassengerCount(input, step) {
+    if (input.disabled) return;
+    const current = Number(input.value);
+    if (step < 0) {
+      if (!Number.isInteger(current) || current <= 1) return;
+      input.value = String(current - 1);
+    } else {
+      input.value = String(Number.isInteger(current) && current >= 1 ? current + 1 : 1);
+    }
+    input.dispatchEvent(new Event('input', { bubbles: true }));
+  }
+
   function passengerTripGap(target) {
     if (!target.passenger || !Number.isInteger(target.passengerTripNumber)) return 0;
     const targetTime = new Date(target.timestamp).getTime();
@@ -798,11 +821,13 @@
     input.placeholder = '—';
     if (!completePassenger) {
       input.value = '';
+      updatePassengerCountStepper(input);
       return;
     }
     if (forceSuggestion || (!passengerTripNumberDirty && !input.value)) {
       input.value = suggestedPassengerTripNumber(state.selectedPlatformId, passenger, null, history);
     }
+    updatePassengerCountStepper(input);
   }
 
   function updatePassengerDistanceInput(history) {
@@ -841,6 +866,7 @@
     input.placeholder = '—';
     if (!completePassenger) {
       input.value = '';
+      updatePassengerCountStepper(input);
       return;
     }
     if (forceSuggestion) {
@@ -848,6 +874,7 @@
         ? record.passengerTripNumber
         : suggestedPassengerTripNumber(platformId, passenger, record && record.id);
     }
+    updatePassengerCountStepper(input);
   }
 
   function validateTrip(amount, distance, passenger, passengerTripNumber) {
@@ -991,9 +1018,9 @@
     $('#edit-amount').value = record.amount;
     $('#edit-distance').value = record.distance;
     $('#edit-passenger').value = record.passenger;
-    $('#edit-passenger-count').disabled = record.passenger.length !== 4;
     $('#edit-passenger-count').value = record.passengerTripNumber || '';
     $('#edit-passenger-count').placeholder = '—';
+    updateEditPassengerTripNumber(false);
     $('#edit-error').textContent = '';
     $('#edit-dialog').showModal();
   }
@@ -1208,6 +1235,22 @@
       $('#trend-chart').innerHTML = '<div class="chart-empty">当前范围暂无收入数据</div>';
       return;
     }
+    const platformOrder = new Map(state.platforms.map((platform, index) => [platform.id, index]));
+    const platformRows = state.trendChartType === 'bar'
+      ? platformStats(records).sort((a, b) => (platformOrder.get(a.platform.id) ?? Number.MAX_SAFE_INTEGER) - (platformOrder.get(b.platform.id) ?? Number.MAX_SAFE_INTEGER) || a.platform.name.localeCompare(b.platform.name, 'zh-CN'))
+      : [];
+    const platformAmounts = points.map(() => new Map());
+    if (state.trendChartType === 'bar') {
+      records.forEach((record) => {
+        const date = new Date(record.timestamp);
+        const index = state.range === 'day' ? date.getDate() - 1
+          : state.range === 'month' ? date.getMonth()
+            : date.getFullYear() - sixYearStart();
+        const amountByPlatform = platformAmounts[index];
+        if (!amountByPlatform) return;
+        amountByPlatform.set(record.platformId, (amountByPlatform.get(record.platformId) || 0) + record.amount);
+      });
+    }
     const chartContainer = $('#trend-chart');
     const width = Math.max(320, Math.round(chartContainer.clientWidth - 16) || 360);
     const height = 200;
@@ -1232,8 +1275,16 @@
       const slotWidth = chartWidth / points.length;
       const barWidth = Math.max(3, Math.min(18, slotWidth * .62));
       marks = points.map((point, index) => {
-        const barHeight = Math.max(point.income ? 1 : 0, margin.top + chartHeight - y(point.income));
-        return '<rect class="trend-bar ' + (selectedIndex === index ? 'selected' : '') + '" x="' + (x(index) - barWidth / 2).toFixed(2) + '" y="' + y(point.income).toFixed(2) + '" width="' + barWidth.toFixed(2) + '" height="' + barHeight.toFixed(2) + '" rx="' + Math.min(3, barWidth / 2).toFixed(2) + '"><title>' + trendPointDateLabel(point.label) + '：¥' + moneyFormatter.format(point.income) + '</title></rect>';
+        let stackedIncome = 0;
+        return platformRows.map((row) => {
+          const amount = platformAmounts[index].get(row.platform.id) || 0;
+          if (amount <= 0) return '';
+          const bottom = stackedIncome;
+          stackedIncome += amount;
+          const segmentY = y(stackedIncome);
+          const segmentHeight = y(bottom) - segmentY;
+          return '<rect class="trend-bar ' + (selectedIndex === index ? 'selected' : '') + '" x="' + (x(index) - barWidth / 2).toFixed(2) + '" y="' + segmentY.toFixed(2) + '" width="' + barWidth.toFixed(2) + '" height="' + segmentHeight.toFixed(2) + '" rx="1" style="--bar-color:' + row.platform.color + '"><title>' + trendPointDateLabel(point.label) + ' · ' + escapeHtml(row.platform.name) + '：¥' + moneyFormatter.format(amount) + '</title></rect>';
+        }).join('');
       }).join('');
     } else {
       const line = points.map((point, index) => (index ? 'L' : 'M') + ' ' + x(index).toFixed(2) + ' ' + y(point.income).toFixed(2)).join(' ');
@@ -1256,11 +1307,14 @@
         (state.trendChartType === 'line' ? '<circle class="selected-dot" cx="' + selectedX + '" cy="' + selectedY + '" r="5"/>' : '') +
         '<g class="selection-bubble"><rect x="' + bubbleX + '" y="' + bubbleY + '" width="' + bubbleWidth + '" height="' + bubbleHeight + '" rx="10"/><text x="' + (bubbleX + bubbleWidth / 2) + '" y="' + (bubbleY + 14) + '" text-anchor="middle"><tspan class="selection-date">' + escapeHtml(trendPointDateLabel(selectedPoint.label)) + '</tspan><tspan class="selection-value" x="' + (bubbleX + bubbleWidth / 2) + '" dy="14">¥' + moneyFormatter.format(selectedPoint.income) + '</tspan></text></g>';
     }
+    const legend = state.trendChartType === 'bar'
+      ? '<div class="trend-legend" aria-label="平台颜色">' + platformRows.map((row) => '<span><i style="--bar-color:' + row.platform.color + '"></i>' + escapeHtml(row.platform.name) + '</span>').join('') + '</div>'
+      : '';
     $('#trend-chart').innerHTML = '<svg class="trend-svg" viewBox="0 0 ' + width + ' ' + height + '" role="img" aria-labelledby="trend-svg-title trend-svg-desc">' +
-      '<title id="trend-svg-title">收入趋势</title><desc id="trend-svg-desc">当前范围内最高收入为 ¥' + moneyFormatter.format(max) + '，轻触图表可查看各点金额</desc>' +
+      '<title id="trend-svg-title">收入趋势</title><desc id="trend-svg-desc">当前范围内最高收入为 ¥' + moneyFormatter.format(max) + (state.trendChartType === 'bar' ? '，柱形按平台颜色堆叠显示' : '，轻触图表可查看各点金额') + '</desc>' +
       '<defs><linearGradient id="trend-fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--accent)" stop-opacity=".22"/><stop offset="1" stop-color="var(--accent)" stop-opacity="0"/></linearGradient></defs>' +
       grids + marks + labels + selection +
-      '<rect class="trend-hit-area" x="' + margin.left + '" y="' + margin.top + '" width="' + chartWidth + '" height="' + chartHeight + '"/></svg>';
+      '<rect class="trend-hit-area" x="' + margin.left + '" y="' + margin.top + '" width="' + chartWidth + '" height="' + chartHeight + '"/></svg>' + legend;
   }
 
   function trendPointDateLabel(label) {
@@ -1941,7 +1995,14 @@
       updatePassengerSuggestions(true);
     });
     $('#distance-input').addEventListener('input', () => { distanceAutoFilled = false; });
-    $('#passenger-count-input').addEventListener('input', () => { passengerTripNumberDirty = true; });
+    $('#passenger-count-input').addEventListener('input', () => {
+      passengerTripNumberDirty = true;
+      updatePassengerCountStepper($('#passenger-count-input'));
+    });
+    $('#trip-form').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-count-step]');
+      if (button) stepPassengerCount($('#passenger-count-input'), Number(button.dataset.countStep));
+    });
     $('#manage-platforms').addEventListener('click', openPlatformDialog);
     $('#platform-manager-list').addEventListener('click', managePlatformClick);
     $('#new-platform-icons').addEventListener('click', (event) => {
@@ -1988,6 +2049,11 @@
     $('#edit-passenger').addEventListener('input', (event) => {
       event.target.value = event.target.value.replace(/\D/g, '').slice(0, 4);
       updateEditPassengerTripNumber(true);
+    });
+    $('#edit-passenger-count').addEventListener('input', () => updatePassengerCountStepper($('#edit-passenger-count')));
+    $('#edit-form').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-count-step]');
+      if (button) stepPassengerCount($('#edit-passenger-count'), Number(button.dataset.countStep));
     });
     $('#edit-platform').addEventListener('change', () => updateEditPassengerTripNumber(true));
     $('#edit-datetime').addEventListener('input', updateEditDateTimeDisplay);
