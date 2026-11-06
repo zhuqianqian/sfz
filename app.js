@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'shunfeng-ledger-v1';
   const INSTALL_DISMISSED_KEY = 'shunfeng-install-tip-dismissed';
-  const APP_VERSION = '1.0.2';
+  const APP_VERSION = '1.0.3';
   const DEFAULT_PLATFORMS = [
     { id: 'dida', name: '嘀嗒出行', short: '嘀', color: '#e85d46', icon: 'assets/platforms/dida.png', builtIn: true },
     { id: 'hello', name: '哈啰', short: '哈', color: '#1b72e8', icon: 'assets/platforms/hello.png', builtIn: true },
@@ -1165,6 +1165,27 @@
     else $('#period-label').textContent = sixYearStart() + '—' + (sixYearStart() + 5) + ' 年';
   }
 
+  function periodPointCount() {
+    const now = new Date();
+    if (state.range === 'day') {
+      const year = state.cursor.getFullYear();
+      const month = state.cursor.getMonth();
+      const days = new Date(year, month + 1, 0).getDate();
+      return year === now.getFullYear() && month === now.getMonth() ? now.getDate() : days;
+    }
+    if (state.range === 'month') {
+      return state.cursor.getFullYear() === now.getFullYear() ? now.getMonth() + 1 : 12;
+    }
+    const start = sixYearStart();
+    return Math.min(6, Math.max(0, now.getFullYear() - start + 1));
+  }
+
+  function periodIndexForDate(date) {
+    if (state.range === 'day') return date.getDate() - 1;
+    if (state.range === 'month') return date.getMonth();
+    return date.getFullYear() - sixYearStart();
+  }
+
   function renderCalendar(records = scopeRecords()) {
     const panel = $('#calendar-panel');
     const now = new Date();
@@ -1208,17 +1229,17 @@
     if (state.range === 'day') {
       const year = state.cursor.getFullYear();
       const month = state.cursor.getMonth();
-      const days = new Date(year, month + 1, 0).getDate();
+      const days = periodPointCount();
       const data = aggregateByKey(records, (record) => new Date(record.timestamp).getDate());
       return Array.from({ length: days }, (_, index) => Object.assign({ label: String(index + 1) }, data.get(index + 1) || emptyAggregate()));
     }
     if (state.range === 'month') {
       const data = aggregateByKey(records, (record) => new Date(record.timestamp).getMonth());
-      return Array.from({ length: 12 }, (_, index) => Object.assign({ label: (index + 1) + '月' }, data.get(index) || emptyAggregate()));
+      return Array.from({ length: periodPointCount() }, (_, index) => Object.assign({ label: (index + 1) + '月' }, data.get(index) || emptyAggregate()));
     }
     const start = sixYearStart();
     const data = aggregateByKey(records, (record) => new Date(record.timestamp).getFullYear());
-    return Array.from({ length: 6 }, (_, index) => Object.assign({ label: String(start + index) }, data.get(start + index) || emptyAggregate()));
+    return Array.from({ length: periodPointCount() }, (_, index) => Object.assign({ label: String(start + index) }, data.get(start + index) || emptyAggregate()));
   }
 
   function renderTrendChart(records = scopeRecords()) {
@@ -1230,24 +1251,31 @@
     const points = periodPoints(records);
     const values = points.map((point) => point.income);
     const max = Math.max.apply(null, values);
-    if (max <= 0) {
+    if (!points.length || max <= 0) {
       state.trendPointIndex = null;
       $('#trend-chart').innerHTML = '<div class="chart-empty">当前范围暂无收入数据</div>';
       return;
     }
+    const visibleRecords = records.filter((record) => {
+      const index = periodIndexForDate(new Date(record.timestamp));
+      return index >= 0 && index < points.length;
+    });
     const platformOrder = new Map(state.platforms.map((platform, index) => [platform.id, index]));
     const platformRows = state.trendChartType === 'bar'
-      ? platformStats(records).sort((a, b) => (platformOrder.get(a.platform.id) ?? Number.MAX_SAFE_INTEGER) - (platformOrder.get(b.platform.id) ?? Number.MAX_SAFE_INTEGER) || a.platform.name.localeCompare(b.platform.name, 'zh-CN'))
+      ? platformStats(visibleRecords).sort((a, b) => (platformOrder.get(a.platform.id) ?? Number.MAX_SAFE_INTEGER) - (platformOrder.get(b.platform.id) ?? Number.MAX_SAFE_INTEGER) || a.platform.name.localeCompare(b.platform.name, 'zh-CN'))
       : [];
     const platformAmounts = points.map(() => new Map());
+    const orderSegments = points.map(() => []);
     if (state.trendChartType === 'bar') {
-      records.forEach((record) => {
+      visibleRecords.slice().sort((a, b) => compareText(a.timestamp, b.timestamp) || compareText(a.id, b.id)).forEach((record) => {
         const date = new Date(record.timestamp);
-        const index = state.range === 'day' ? date.getDate() - 1
-          : state.range === 'month' ? date.getMonth()
-            : date.getFullYear() - sixYearStart();
+        const index = periodIndexForDate(date);
+        if (!platformAmounts[index]) return;
+        if (state.range === 'day') {
+          orderSegments[index].push({ record: record, platform: platformFor(record), amount: record.amount });
+          return;
+        }
         const amountByPlatform = platformAmounts[index];
-        if (!amountByPlatform) return;
         amountByPlatform.set(record.platformId, (amountByPlatform.get(record.platformId) || 0) + record.amount);
       });
     }
@@ -1276,6 +1304,17 @@
       const barWidth = Math.max(3, Math.min(18, slotWidth * .62));
       marks = points.map((point, index) => {
         let stackedIncome = 0;
+        if (state.range === 'day') {
+          return orderSegments[index].map((segment) => {
+            const bottom = stackedIncome;
+            stackedIncome += segment.amount;
+            const segmentY = y(stackedIncome);
+            const segmentHeight = y(bottom) - segmentY;
+            const time = new Date(segment.record.timestamp);
+            const timeLabel = String(time.getHours()).padStart(2, '0') + ':' + String(time.getMinutes()).padStart(2, '0');
+            return '<rect class="trend-bar day-order-segment ' + (selectedIndex === index ? 'selected' : '') + '" x="' + (x(index) - barWidth / 2).toFixed(2) + '" y="' + segmentY.toFixed(2) + '" width="' + barWidth.toFixed(2) + '" height="' + segmentHeight.toFixed(2) + '" rx="1" style="--bar-color:' + segment.platform.color + '"><title>' + trendPointDateLabel(point.label) + ' · ' + escapeHtml(timeLabel) + ' · ' + escapeHtml(segment.platform.name) + '：¥' + moneyFormatter.format(segment.amount) + '</title></rect>';
+          }).join('');
+        }
         return platformRows.map((row) => {
           const amount = platformAmounts[index].get(row.platform.id) || 0;
           if (amount <= 0) return '';
