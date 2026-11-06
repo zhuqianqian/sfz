@@ -95,7 +95,7 @@
               </label>
               <label class="trip-number-field compact-field passenger-field">
                 <span>乘客出行次数</span>
-                <span class="input-shell trip-number-input is-disabled"><b>第</b><input id="passenger-count-input" name="passengerTripNumber" type="number" inputmode="numeric" min="1" step="1" placeholder="—" aria-label="乘客出行次数" disabled><b>次</b></span>
+                <span class="input-shell trip-number-input number-stepper is-disabled"><b>第</b><button class="number-stepper-button" type="button" data-count-step="-1" aria-label="减少乘客出行次数" disabled>−</button><input id="passenger-count-input" name="passengerTripNumber" type="number" inputmode="numeric" min="1" step="1" placeholder="—" aria-label="乘客出行次数" disabled><button class="number-stepper-button" type="button" data-count-step="1" aria-label="增加乘客出行次数" disabled>+</button><b>次</b></span>
               </label>
               <button class="record-button" type="submit" id="record-button" aria-label="记一单">
                 <span>记一单</span>
@@ -250,7 +250,7 @@
         <label><span>收入（元）</span><input id="edit-amount" type="number" inputmode="decimal" min="0" step="0.01" required></label>
         <label><span>里程（km）</span><input id="edit-distance" type="number" inputmode="decimal" min="0" step="0.1" required></label>
         <label><span>乘客手机尾号</span><input id="edit-passenger" type="tel" inputmode="numeric" maxlength="4" placeholder="1234"></label>
-        <label><span>乘客出行次数</span><input id="edit-passenger-count" type="number" inputmode="numeric" min="1" step="1" placeholder="—" disabled></label>
+        <label class="edit-trip-number-field"><span>乘客出行次数</span><span class="number-stepper edit-number-stepper is-disabled"><button class="number-stepper-button" type="button" data-count-step="-1" aria-label="减少乘客出行次数" disabled>−</button><input id="edit-passenger-count" type="number" inputmode="numeric" min="1" step="1" placeholder="—" disabled><button class="number-stepper-button" type="button" data-count-step="1" aria-label="增加乘客出行次数" disabled>+</button></span></label>
       </div>
       <p class="form-error" id="edit-error" role="alert"></p>
       <div class="sheet-actions split-actions">
