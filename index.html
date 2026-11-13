@@ -194,6 +194,34 @@
           </article>
         </section>
       </section>
+      <section class="page" id="records-page" aria-labelledby="records-tab" hidden>
+        <div class="records-title-row">
+          <h1>记录</h1>
+        </div>
+        <div class="records-tabs" id="records-tabs" role="tablist" aria-label="记录类型">
+          <button type="button" id="order-records-tab" class="active" role="tab" aria-selected="true" aria-controls="order-records-view" data-records-view="orders">订单记录</button>
+          <button type="button" id="shift-records-tab" role="tab" aria-selected="false" aria-controls="shift-records-view" tabindex="-1" data-records-view="shifts">出车记录</button>
+        </div>
+        <section id="order-records-view" role="tabpanel" aria-labelledby="order-records-tab">
+          <div class="records-controls">
+            <div class="records-search">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5"/><path d="m16 16 4 4"/></svg>
+              <input id="records-search" type="search" inputmode="numeric" maxlength="4" placeholder="搜索乘客手机尾号" aria-label="搜索乘客手机尾号" autocomplete="off">
+              <button id="clear-records-search" type="button" aria-label="清除尾号搜索" hidden>×</button>
+            </div>
+            <div class="records-filter-row">
+              <div class="records-platform-filters" id="records-platform-filters" role="group" aria-label="筛选平台，可多选"></div>
+              <button class="text-button" id="reset-records-filters" type="button" hidden>重置</button>
+            </div>
+          </div>
+          <p class="records-meta" id="all-records-meta" role="status" aria-live="polite">暂无记录</p>
+          <div class="all-records-list" id="all-records-list"></div>
+        </section>
+        <section id="shift-records-view" role="tabpanel" aria-labelledby="shift-records-tab" hidden>
+          <p class="records-meta" id="shift-history-meta">暂无记录</p>
+          <div class="shift-history-list" id="shift-history-list"></div>
+        </section>
+      </section>
     </main>
 
     <nav class="bottom-nav" aria-label="主导航">
@@ -204,6 +232,10 @@
       <button type="button" id="stats-tab" data-page="stats">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 19V9m6 10V5m6 14v-7m4 7H2"/></svg>
         <span>统计</span>
+      </button>
+      <button type="button" id="records-tab" data-page="records">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 3h12a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2Z"/><path d="M8 8h8M8 12h8M8 16h5"/></svg>
+        <span>记录</span>
       </button>
     </nav>
   </div>
@@ -257,28 +289,6 @@
         <button type="button" class="danger-button" id="delete-trip">删除记录</button>
         <button type="button" class="primary-button" id="save-trip">保存修改</button>
       </div>
-    </form>
-  </dialog>
-
-  <dialog id="all-records-dialog" class="sheet-dialog all-records-dialog">
-    <form method="dialog" class="sheet all-records-sheet">
-      <div class="sheet-handle"></div>
-      <div class="sheet-header">
-        <div><p class="section-kicker">历史明细</p><h2>全部记录</h2></div>
-        <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
-      </div>
-      <div class="records-tabs" id="records-tabs" role="tablist" aria-label="记录类型">
-        <button type="button" class="active" role="tab" aria-selected="true" data-records-view="orders">订单记录</button>
-        <button type="button" role="tab" aria-selected="false" data-records-view="shifts">出车记录</button>
-      </div>
-      <section id="order-records-view" role="tabpanel">
-        <p class="sheet-description records-meta" id="all-records-meta">暂无记录</p>
-        <div class="all-records-list" id="all-records-list"></div>
-      </section>
-      <section id="shift-records-view" role="tabpanel" hidden>
-        <p class="sheet-description records-meta" id="shift-history-meta">暂无记录</p>
-        <div class="shift-history-list" id="shift-history-list"></div>
-      </section>
     </form>
   </dialog>
 
@@ -428,7 +438,7 @@
         <button type="button" id="settings-export"><span><strong>导出 CSV</strong><small>备份或在表格中分析</small></span><b>›</b></button>
         <button type="button" id="settings-import"><span><strong>导入 CSV</strong><small>恢复备份，自动跳过重复记录</small></span><b>›</b></button>
         <button type="button" id="settings-install"><span><strong>添加到主屏幕</strong><small>像 App 一样全屏、离线使用</small></span><b>›</b></button>
-        <button type="button" id="settings-about"><span><strong>版本与支持</strong><small>1.0.3 · 检查更新与支持作者</small></span><b>›</b></button>
+        <button type="button" id="settings-about"><span><strong>版本与支持</strong><small>1.0.4 · 检查更新与支持作者</small></span><b>›</b></button>
         <button type="button" class="danger-setting" id="settings-clear"><span><strong>清空全部记录</strong><small>订单和专职记录将清空，平台设置会保留</small></span><b>×</b></button>
       </div>
       <p class="privacy-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 10V7a5 5 0 0 1 10 0v3m-11 0h12v10H6V10Z"/></svg>所有数据仅保存在当前设备的浏览器中。</p>
@@ -443,7 +453,7 @@
         <button class="icon-button close-dialog" type="submit" value="cancel" aria-label="关闭">×</button>
       </div>
       <section class="version-card" aria-label="版本信息">
-        <div><span>当前版本</span><strong>1.0.3</strong></div>
+        <div><span>当前版本</span><strong>1.0.4</strong></div>
         <button type="button" id="check-update">检查更新</button>
         <p id="version-update-status" role="status">打开此页面时会自动检查更新。</p>
       </section>

@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'shunfeng-ledger-v1';
   const INSTALL_DISMISSED_KEY = 'shunfeng-install-tip-dismissed';
-  const APP_VERSION = '1.0.3';
+  const APP_VERSION = '1.0.4';
   const DEFAULT_PLATFORMS = [
     { id: 'dida', name: '嘀嗒出行', short: '嘀', color: '#e85d46', icon: 'assets/platforms/dida.png', builtIn: true },
     { id: 'hello', name: '哈啰', short: '哈', color: '#1b72e8', icon: 'assets/platforms/hello.png', builtIn: true },
@@ -40,14 +40,14 @@
     trendPointIndex: null
   };
   let passengerTripNumberDirty = false;
-  let reopenAllRecordsAfterEdit = false;
-  let reopenShiftHistoryAfterFlow = false;
   let professionalBannerInitialized = false;
   let professionalTransitionTimer = null;
   let professionalInfoTimer = null;
   let trendResizeTimer = null;
   let selectedNewPlatformIcon = '';
   let allRecordsView = 'orders';
+  let recordsSearch = '';
+  const recordsPlatformIds = new Set();
   let distanceAutoFilled = false;
 
   const $ = (selector, root = document) => root.querySelector(selector);
@@ -711,13 +711,21 @@
   }
 
   function renderAllRecords() {
-    const records = Array.from(state.records).sort((a, b) => compareText(b.timestamp, a.timestamp));
+    const filtering = recordsSearch !== '' || recordsPlatformIds.size > 0;
+    const records = state.records.filter((record) => {
+      return (!recordsSearch || record.passenger.includes(recordsSearch)) &&
+        (!recordsPlatformIds.size || recordsPlatformIds.has(record.platformId));
+    }).sort((a, b) => compareText(b.timestamp, a.timestamp));
     const list = $('#all-records-list');
+    $('#clear-records-search').hidden = !recordsSearch;
+    $('#reset-records-filters').hidden = !filtering;
     $('#all-records-meta').textContent = records.length
-      ? records.length + ' 单 · ¥' + moneyFormatter.format(sum(records, 'amount')) + ' · ' + sum(records, 'distance').toFixed(1) + ' km'
-      : '暂无记录';
+      ? (filtering ? '找到 ' : '') + records.length + ' 单 · ¥' + moneyFormatter.format(sum(records, 'amount')) + ' · ' + sum(records, 'distance').toFixed(1) + ' km'
+      : filtering ? '找到 0 单' : '暂无记录';
     if (!records.length) {
-      list.innerHTML = '<div class="empty-state"><strong>还没有任何记录</strong><p>完成第一笔记录后，历史明细会显示在这里。</p></div>';
+      list.innerHTML = filtering
+        ? '<div class="empty-state"><strong>没有符合条件的记录</strong><p>试试其他尾号或平台，也可以重置搜索和筛选。</p></div>'
+        : '<div class="empty-state"><strong>还没有任何记录</strong><p>完成第一笔记录后，历史明细会显示在这里。</p></div>';
       return;
     }
     const groups = new Map();
@@ -732,6 +740,19 @@
     }).join('');
   }
 
+  function renderRecordsPlatformFilters() {
+    const platforms = new Map(state.platforms.map((platform) => [platform.id, platform]));
+    state.records.forEach((record) => {
+      if (!platforms.has(record.platformId)) platforms.set(record.platformId, platformFor(record));
+    });
+    recordsPlatformIds.forEach((id) => {
+      if (!platforms.has(id)) recordsPlatformIds.delete(id);
+    });
+    $('#records-platform-filters').innerHTML = Array.from(platforms.values()).map((platform) => {
+      return '<button type="button" class="records-platform-chip" data-filter-platform="' + escapeHtml(platform.id) + '" aria-pressed="' + recordsPlatformIds.has(platform.id) + '">' + escapeHtml(platform.name) + '</button>';
+    }).join('');
+  }
+
   function renderAllRecordsView(view) {
     allRecordsView = view === 'shifts' ? 'shifts' : 'orders';
     const showOrders = allRecordsView === 'orders';
@@ -743,13 +764,11 @@
       button.setAttribute('aria-selected', String(active));
       button.tabIndex = active ? 0 : -1;
     });
-    if (showOrders) renderAllRecords();
+    if (showOrders) {
+      renderRecordsPlatformFilters();
+      renderAllRecords();
+    }
     else renderShiftHistory();
-  }
-
-  function openAllRecordsDialog(view) {
-    renderAllRecordsView(view || allRecordsView);
-    $('#all-records-dialog').showModal();
   }
 
   function scanPassengerHistory(platformId, passenger, excludeRecordId) {
@@ -1012,7 +1031,10 @@
     const record = state.records.find((item) => item.id === id);
     if (!record) return;
     $('#edit-id').value = record.id;
-    $('#edit-platform').innerHTML = state.platforms.map((platform) => '<option value="' + escapeHtml(platform.id) + '" ' + (platform.id === record.platformId ? 'selected' : '') + '>' + escapeHtml(platform.name) + '</option>').join('');
+    const editPlatforms = state.platforms.some((platform) => platform.id === record.platformId)
+      ? state.platforms
+      : state.platforms.concat(platformFor(record));
+    $('#edit-platform').innerHTML = editPlatforms.map((platform) => '<option value="' + escapeHtml(platform.id) + '" ' + (platform.id === record.platformId ? 'selected' : '') + '>' + escapeHtml(platform.name) + '</option>').join('');
     $('#edit-datetime').value = toDatetimeLocal(new Date(record.timestamp));
     updateEditDateTimeDisplay();
     $('#edit-amount').value = record.amount;
@@ -1055,7 +1077,8 @@
       $('#edit-error').textContent = error;
       return;
     }
-    const platform = platformFor($('#edit-platform').value);
+    const platformId = $('#edit-platform').value;
+    const platform = platformFor(platformId === record.platformId ? record : platformId);
     Object.assign(record, {
       timestamp: timestamp.toISOString(),
       platformId: platform.id,
@@ -1088,7 +1111,9 @@
     state.page = page;
     $('#record-page').hidden = page !== 'record';
     $('#stats-page').hidden = page !== 'stats';
+    $('#records-page').hidden = page !== 'records';
     $('.app-shell').classList.toggle('stats-mode', page === 'stats');
+    $('.app-shell').classList.toggle('records-mode', page === 'records');
     $$('.bottom-nav button').forEach((button) => {
       const active = button.dataset.page === page;
       button.classList.toggle('active', active);
@@ -1096,6 +1121,7 @@
       else button.removeAttribute('aria-current');
     });
     if (page === 'stats') renderStats();
+    else if (page === 'records') renderAllRecordsView(allRecordsView);
     else renderHome();
     window.scrollTo({ top: 0, behavior: 'smooth' });
   }
@@ -2006,20 +2032,12 @@
       if (!item) return;
       const shift = state.shifts.find((candidate) => candidate.id === item.dataset.shiftId);
       if (!shift) return;
-      reopenShiftHistoryAfterFlow = true;
-      $('#all-records-dialog').close();
-      requestAnimationFrame(() => {
-        if (shift.endTimestamp) openEditShiftDialog(shift.id);
-        else openStopShiftDialog();
-      });
+      if (shift.endTimestamp) openEditShiftDialog(shift.id);
+      else openStopShiftDialog();
     });
     [$('#stop-shift-dialog'), $('#edit-shift-dialog')].forEach((dialog) => {
       dialog.addEventListener('close', () => {
-        if (!reopenShiftHistoryAfterFlow) return;
-        reopenShiftHistoryAfterFlow = false;
-        requestAnimationFrame(() => {
-          openAllRecordsDialog('shifts');
-        });
+        if (state.page === 'records') renderAllRecordsView(allRecordsView);
       });
     });
     $('#edit-shift-start').addEventListener('input', handleEditShiftDateTimeChange);
@@ -2060,27 +2078,60 @@
     $('#today-list').addEventListener('click', (event) => {
       const item = event.target.closest('[data-record-id]');
       if (item) {
-        reopenAllRecordsAfterEdit = false;
         openEditDialog(item.dataset.recordId);
       }
     });
-    $('#open-all-records').addEventListener('click', () => openAllRecordsDialog());
+    $('#open-all-records').addEventListener('click', () => {
+      allRecordsView = 'orders';
+      switchPage('records');
+    });
     $('#records-tabs').addEventListener('click', (event) => {
       const button = event.target.closest('[data-records-view]');
       if (button) renderAllRecordsView(button.dataset.recordsView);
     });
+    $('#records-tabs').addEventListener('keydown', (event) => {
+      if (!['ArrowLeft', 'ArrowRight', 'Home', 'End'].includes(event.key)) return;
+      event.preventDefault();
+      const view = event.key === 'Home' ? 'orders' : event.key === 'End' ? 'shifts' : allRecordsView === 'orders' ? 'shifts' : 'orders';
+      renderAllRecordsView(view);
+      $('[data-records-view="' + view + '"]').focus();
+    });
+    $('#records-search').addEventListener('input', (event) => {
+      recordsSearch = event.target.value.trim();
+      renderAllRecords();
+    });
+    $('#clear-records-search').addEventListener('click', () => {
+      recordsSearch = '';
+      $('#records-search').value = '';
+      renderAllRecords();
+      $('#records-search').focus();
+    });
+    $('#records-platform-filters').addEventListener('click', (event) => {
+      const button = event.target.closest('[data-filter-platform]');
+      if (!button) return;
+      const id = button.dataset.filterPlatform;
+      if (recordsPlatformIds.has(id)) recordsPlatformIds.delete(id);
+      else recordsPlatformIds.add(id);
+      button.setAttribute('aria-pressed', String(recordsPlatformIds.has(id)));
+      renderAllRecords();
+    });
+    $('#reset-records-filters').addEventListener('click', () => {
+      recordsSearch = '';
+      recordsPlatformIds.clear();
+      $('#records-search').value = '';
+      renderAllRecordsView('orders');
+    });
     $('#all-records-list').addEventListener('click', (event) => {
       const item = event.target.closest('[data-record-id]');
       if (!item) return;
-      reopenAllRecordsAfterEdit = true;
-      $('#all-records-dialog').close();
-      requestAnimationFrame(() => openEditDialog(item.dataset.recordId));
+      openEditDialog(item.dataset.recordId);
     });
     $('#edit-dialog').addEventListener('close', () => {
-      if (!reopenAllRecordsAfterEdit) return;
-      reopenAllRecordsAfterEdit = false;
-      requestAnimationFrame(() => {
-        openAllRecordsDialog('orders');
+      if (state.page === 'records') renderAllRecordsView(allRecordsView);
+    });
+    [$('#platform-dialog'), $('#import-dialog'), $('#settings-dialog')].forEach((dialog) => {
+      dialog.addEventListener('close', () => {
+        if (state.page === 'records') renderAllRecordsView(allRecordsView);
       });
     });
     $('#save-trip').addEventListener('click', saveEditedTrip);
