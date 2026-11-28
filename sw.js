@@ -1,4 +1,4 @@
-const CACHE_NAME = 'shunfeng-ledger-shell-v23';
+const CACHE_NAME = 'shunfeng-ledger-shell-v24';
 const APP_SHELL = [
   './',
   './index.html',

@@ -3,7 +3,7 @@
 
   const STORAGE_KEY = 'shunfeng-ledger-v1';
   const INSTALL_DISMISSED_KEY = 'shunfeng-install-tip-dismissed';
-  const APP_VERSION = '1.0.4';
+  const APP_VERSION = '1.0.5';
   const DEFAULT_PLATFORMS = [
     { id: 'dida', name: '嘀嗒出行', short: '嘀', color: '#e85d46', icon: 'assets/platforms/dida.png', builtIn: true },
     { id: 'hello', name: '哈啰', short: '哈', color: '#1b72e8', icon: 'assets/platforms/hello.png', builtIn: true },
@@ -215,6 +215,7 @@
       records: records,
       income: usesManualIncome ? Number(shift.manualIncome) : sum(records, 'amount'),
       count: records.length,
+      emptyDistance: shift.endTimestamp ? round(Number(shift.distance) - sum(records, 'distance'), 1) : null,
       usesManualIncome: usesManualIncome,
       duration: Math.max(0, new Date(endValue || shift.endTimestamp || Date.now()).getTime() - new Date(shift.startTimestamp).getTime())
     };
@@ -505,7 +506,7 @@
       return '<button type="button" class="shift-history-item ' + (active ? 'active' : '') + '" data-shift-id="' + escapeHtml(shift.id) + '">' +
         '<span class="shift-history-top"><strong>' + escapeHtml(date) + '</strong>' + (active ? '<em>出车中</em>' : '<b>¥' + moneyFormatter.format(summary.income) + '</b>') + '</span>' +
         '<span class="shift-history-time">' + time + ' — ' + endTime + ' · ' + escapeHtml(formatDuration(summary.duration)) + '</span>' +
-        '<span class="shift-history-meta">' + summary.count + ' 单' + (summary.usesManualIncome ? ' · 手动收入' : '') + (active ? '' : ' · ' + Number(shift.distance).toFixed(1) + ' km · ¥' + moneyFormatter.format(shift.distance > 0 ? summary.income / shift.distance : 0) + '/km') + '</span></button>';
+        '<span class="shift-history-meta">' + summary.count + ' 单' + (summary.usesManualIncome ? ' · 手动收入' : '') + (active ? '' : ' · ' + Number(shift.distance).toFixed(1) + ' km · ¥' + moneyFormatter.format(shift.distance > 0 ? summary.income / shift.distance : 0) + '/km · 空驶' + summary.emptyDistance.toFixed(1) + 'km') + '</span></button>';
     }).join('');
   }
 
